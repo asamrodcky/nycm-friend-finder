@@ -38,6 +38,27 @@ npm run db:q "SELECT * FROM v_runner_start"   # query local
 npm run db:reset:local                         # wipe + rebuild local
 ```
 
+## API
+
+All routes need `Authorization: Bearer <token>` except `POST /api/auth`.
+Reads hit views only; the API never touches a base table.
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/auth` | POST | `{passcode}` -> `{token}`. HMAC-signed expiry stamp, 30-day TTL |
+| `/api/meta` | GET | Seeded dimensions + departure slots, for the form dropdowns |
+| `/api/runners` | GET | The whole roster, one shot; the page filters client side |
+| `/api/runners` | POST | Create (no `runner_key`) or update (with one) |
+| `/api/runners/:key` | DELETE | Soft delete -- supersedes the live row, keeps history |
+| `/api/meetups` | GET | The four match tiers plus the gap list |
+
+Entries are keyed by `runner_key`, not bib number: bibs are optional and
+some people genuinely do not have one yet.
+
+The passcode itself never reaches browser storage. `POST /api/auth`
+exchanges it for a signed token, and that is what sits in `localStorage`.
+Stateless, so there is no session table to clean up at teardown.
+
 ## Data model
 
 A **star schema**, because the point of this project is to practise one.
