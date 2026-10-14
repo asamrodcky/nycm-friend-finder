@@ -1,0 +1,12 @@
+name = "nycm-friendfinder"
+compatibility_date = "2026-10-14"
+pages_build_output_dir = "public"
+
+# Local dev works with the placeholder id below.
+# After `npx wrangler d1 create nycm-friendfinder`, paste the real
+# database_id here before running any --remote command.
+[[d1_databases]]
+binding = "DB"
+database_name = "nycm-friendfinder"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"

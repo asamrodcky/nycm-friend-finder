@@ -18,3 +18,8 @@ dist/
 *.swp
 .idea/
 .vscode/
+
+# Real roster data - real names + bib numbers, deliberately out of git.
+# A name + bib is enough to look someone up on NYRR tracking.
+*.csv
+seed/
