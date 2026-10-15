@@ -63,6 +63,25 @@ Sign-in accepts **a bib number or a name**, both with the PIN. Bib is the
 fast path, but some people have no bib yet, and anyone who corrects a
 wrong bib would otherwise lock themselves out.
 
+PINs are **4 to 6 digits**. Length costs nothing — PBKDF2 is priced per
+iteration, not per character, so a 6-digit PIN hashes in the same time as
+a 4-digit one while being 100x harder to brute-force out of a leaked
+snapshot. The form accepts either and nudges toward 6.
+
+### Resetting a forgotten PIN
+
+There is no automated recovery — no email, no phone number. If someone
+forgets their PIN or typos it when claiming, clear it and they can
+re-claim their row with their data intact:
+
+```bash
+npm run db:q:remote "UPDATE dim_runner SET pin_hash=NULL, pin_salt=NULL, claimed_at_utc=NULL WHERE display_name='Runner V'"
+```
+
+They reappear in the "already on the roster?" picker and set a new PIN.
+Bib, wave, corral and transport are all untouched. Use `db:q` instead of
+`db:q:remote` against the local database.
+
 ## API
 
 | Route | Method | Needs | Purpose |
