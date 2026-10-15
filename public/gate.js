@@ -78,7 +78,7 @@ async function askWhoYouAre(root, next) {
     </div>
     <p class="hint">${claimable
       ? 'Pick "someone already added me" if your name was entered for you.'
-      : 'Been here before? Sign in with your bib number or name and your PIN.'}</p>`);
+      : 'Been here before? Sign in with your bib number and PIN.'}</p>`);
 
   if (claimable) root.querySelector('#w-claim').onclick = () => claimScreen(root, next);
   root.querySelector('#w-signin').onclick = () => signinScreen(root, next);
@@ -143,17 +143,38 @@ async function claimScreen(root, next) {
 // ---------- 2b. sign in ----------
 
 function signinScreen(root, next) {
+  // Bib only, by default. The API accepts a name too, but offering both
+  // in one field invites people to type a name that does not match what
+  // they entered the first time -- "Sam" vs "Samuel" -- and get a
+  // rejection they cannot diagnose.
+  //
+  // The fallback stays reachable because a bib is optional at
+  // onboarding and NYRR has not given everyone one yet. Without it,
+  // anyone who signed up before their bib arrived could never reach a
+  // second device, and the only recovery is Sam clearing their PIN.
   h(root, `
     <h2>Welcome back</h2>
     <form class="card stack">
-      <label for="s-who">Bib number or name</label>
-      <input id="s-who" autocomplete="username">
+      <div id="s-by-bib">
+        <label for="s-who">Bib number</label>
+        <input id="s-who" inputmode="numeric" autocomplete="username" required>
+      </div>
       <label for="s-pin">PIN</label>
-      <input id="s-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password">
+      <input id="s-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required>
       <button type="submit">Sign in</button>
+      <button type="button" id="s-noBib" class="mini">I don't have a bib number</button>
       <button type="button" id="s-back" class="ghost">Back</button>
-      <p class="hint">Forgotten your PIN? Ask Sam to reset it, then claim your row again.</p>
+      <p class="hint">Forgotten your PIN? Ask Sam to reset it, then set a new one.</p>
     </form>`);
+
+  root.querySelector('#s-noBib').onclick = e => {
+    root.querySelector('#s-by-bib').innerHTML = `
+      <label for="s-who">Your name</label>
+      <input id="s-who" autocomplete="username" required>
+      <div class="hint">Exactly as you typed it when you signed up.</div>`;
+    e.target.remove();
+    root.querySelector('#s-who').focus();
+  };
 
   root.querySelector('#s-back').onclick = () => askWhoYouAre(root, next);
   root.querySelector('form').addEventListener('submit', async e => {
