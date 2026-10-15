@@ -13,7 +13,8 @@
     "db:snapshot": "wrangler d1 export nycm-friendfinder --remote --output=snapshots/nycm2026-final.sql",
     "typecheck": "tsc --noEmit",
     "roster:build": "node scripts/load_roster.mjs",
-    "db:load:local": "wrangler d1 execute nycm-friendfinder --local --file=seed/roster_load.sql"
+    "db:load:local": "wrangler d1 execute nycm-friendfinder --local --file=seed/roster_load.sql",
+    "db:check:remote": "wrangler d1 execute nycm-friendfinder --remote --command \"SELECT (SELECT COUNT(*) FROM dim_color) colors, (SELECT COUNT(*) FROM dim_wave) waves, (SELECT COUNT(*) FROM dim_transport) transports, (SELECT COUNT(*) FROM dim_runner) runners, (SELECT COUNT(*) FROM fct_runner_start) assignments\""
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261006.1",

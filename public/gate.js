@@ -86,13 +86,21 @@ async function claimScreen(root, next) {
   try { ({ unclaimed } = await api('/api/profile/unclaimed')); }
   catch (err) { return h(root, `<div class="error">${esc(err.message)}</div>`); }
 
+  // Two different situations land here and the copy has to fit both: a
+  // fresh database with nobody imported at all (which is how production
+  // starts), and an imported list where everyone has already claimed.
   if (!unclaimed.length) {
-    return h(root, `
-      <h2>Nobody left to claim</h2>
-      <div class="card">
-        <p class="meta">Everyone on the spreadsheet has already set a PIN.</p>
+    h(root, `
+      <h2>Nobody to claim</h2>
+      <div class="card stack">
+        <p class="meta">There's no one waiting to be claimed — either nobody was
+        imported from a spreadsheet, or everyone already set a PIN.</p>
+        <button id="b-new" class="ghost">Add me instead</button>
         <button id="b-back" class="ghost">Back</button>
-      </div>`), root.querySelector('#b-back').onclick = () => askWhoYouAre(root, next);
+      </div>`);
+    root.querySelector('#b-new').onclick  = () => onboardScreen(root, next);
+    root.querySelector('#b-back').onclick = () => askWhoYouAre(root, next);
+    return;
   }
 
   h(root, `

@@ -96,5 +96,14 @@ export async function requireProfile(
   const claims = await readToken(token, env);
   if (!claims) return err('session expired -- sign in again', 401);
   if (claims.kind !== 'p') return err('sign in to your profile first', 403);
+
+  // The token is signed and unexpired, but the runner it points at may
+  // have been deleted -- by a PIN reset, a wiped database, or a fresh
+  // deploy. Without this check you are "signed in" as a ghost: no card,
+  // no edit link, and nothing to do but sign out.
+  const exists = await env.DB.prepare('SELECT 1 FROM dim_runner WHERE runner_key = ?')
+    .bind(claims.runnerKey).first();
+  if (!exists) return err('that profile no longer exists -- sign in again', 401);
+
   return { runnerKey: claims.runnerKey };
 }

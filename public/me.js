@@ -24,15 +24,19 @@ const app = document.querySelector('#app');
     return app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
   }
 
-  if (!mine) return app.innerHTML = '<div class="error">You are not on the roster.</div>';
+  // mine is undefined when someone took themselves off the roster. Their
+  // runner and PIN still exist, so this same form puts them back -- the
+  // POST supersedes nothing and inserts a fresh assignment.
+  const onRoster = !!mine;
 
   app.innerHTML = `
+    ${onRoster ? '' : '<div class="card meta">You\'re not on the roster. Fill this in to add yourself back.</div>'}
     <form class="card">
-      ${entryFields(meta, mine)}
-      <button type="submit">Save</button>
+      ${entryFields(meta, mine || {})}
+      <button type="submit">${onRoster ? 'Save' : 'Add me to the roster'}</button>
     </form>
-    <button class="ghost" id="remove">Take me off the roster</button>
-    <p class="hint">Removing you keeps your history in the snapshot, it just hides you from the roster.</p>`;
+    ${onRoster ? `<button class="ghost" id="remove">Take me off the roster</button>
+    <p class="hint">Removing you keeps your history in the snapshot, it just hides you from the roster.</p>` : ''}`;
 
   const form = app.querySelector('form');
   const read = wireEntryFields(form, meta);
@@ -54,7 +58,8 @@ const app = document.querySelector('#app');
     }
   });
 
-  app.querySelector('#remove').onclick = async () => {
+  const removeBtn = app.querySelector('#remove');
+  if (removeBtn) removeBtn.onclick = async () => {
     if (!confirm('Take yourself off the roster? Your info stays saved and you can add yourself back.')) return;
     try {
       await api('/api/runners/me', { method: 'DELETE' });

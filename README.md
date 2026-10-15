@@ -165,6 +165,40 @@ from secondary sources and are marked `-- VERIFY` in
 
 For 2026 the start colors are **blue, orange, pink**. Green was retired.
 
+## Test data vs production data
+
+These are deliberately separate, and the separation is structural rather
+than a matter of remembering.
+
+**Migrations seed only reference data** — colors, waves, corrals and
+transport options. There is no `INSERT INTO dim_runner` or
+`fct_runner_start` anywhere in `migrations/`, so applying them to a
+remote database produces a correct, completely empty roster. That is
+what production should start as: everyone adds themselves.
+
+**Roster data only ever arrives through `seed/roster_load.sql`**, which
+is generated from a gitignored CSV, is itself gitignored, and is applied
+by `db:load:local` — a `--local` command with no remote counterpart.
+
+Confirm before going live:
+
+```bash
+npm run db:check:remote
+# expect: colors 3, waves 5, transports 8, runners 0, assignments 0
+```
+
+If you ever *do* want the spreadsheet roster in production — so your
+group claims rows instead of retyping — generate it and apply it
+explicitly:
+
+```bash
+npm run roster:build -- am_ftc_athletes_nycm.csv
+npx wrangler d1 execute nycm-friendfinder --remote --file=seed/roster_load.sql
+```
+
+Note that this is a **reset and load**: it clears the roster first, so
+never run it against a production database people have already used.
+
 ## Deploy
 
 ```bash

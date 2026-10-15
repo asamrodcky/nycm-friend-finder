@@ -132,7 +132,10 @@ function render() {
   const gaps = meetups.gaps?.length ?? 0;
 
   app.innerHTML = `
-    ${mine ? `<h2>You</h2>${card(mine, { mine: true })}` : ''}
+    ${mine
+      ? `<h2>You</h2>${card(mine, { mine: true })}`
+      : `<h2>You</h2><div class="card"><div class="meta">You're signed in but not on the roster right now.</div>
+         <a href="me.html"><button class="ghost">Add me back</button></a></div>`}
 
     <h2>Your people ${saved.length ? `(${saved.length})` : ''}</h2>
     ${saved.length
@@ -149,7 +152,9 @@ function render() {
 
     <button class="ghost" id="signout">Sign out of this device</button>`;
 
-  document.querySelector('#edit-link').hidden = !mine;
+  const link = document.querySelector('#edit-link');
+  link.hidden = false;
+  link.textContent = mine ? 'Edit my info' : 'Add me back';
 }
 
 // ---------- events ----------
