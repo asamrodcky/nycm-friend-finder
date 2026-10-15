@@ -1,0 +1,177 @@
+// The access flow. Runs before either page shows anything.
+//
+//   no group token   -> ask for the group password
+//   no profile token -> claim your imported row, sign in, or start fresh
+//   both present     -> straight through, nothing typed
+//
+// That last line is the whole point: a device you have used before goes
+// directly to the roster.
+
+import { api, store, KEY, esc } from './app.js';
+import { entryFields, wireEntryFields, pinFields, readPin } from './form.js';
+
+const h = (el, html) => { el.innerHTML = html; return el; };
+
+function fail(root, message) {
+  const box = root.querySelector('.error') || Object.assign(document.createElement('div'), { className: 'error' });
+  box.textContent = message;
+  root.querySelector('form')?.append(box);
+}
+
+/** Resolves to the runner_key once we have a profile. */
+export function ensureAccess(root) {
+  return new Promise(resolve => {
+    const next = () => {
+      const me = Number(store.get(KEY.me));
+      if (store.get(KEY.profile) && me) return resolve(me);
+      if (!store.get(KEY.group)) return askPassword(root, next);
+      return askWhoYouAre(root, next);
+    };
+    next();
+  });
+}
+
+// ---------- 1. group password ----------
+
+function askPassword(root, next) {
+  h(root, `
+    <h2>Group password</h2>
+    <form class="card stack">
+      <p class="meta">Ask Sam for the password if you don't have it.</p>
+      <label for="g-pass">Password</label>
+      <input id="g-pass" type="password" autocomplete="current-password">
+      <button type="submit">Continue</button>
+    </form>`);
+
+  root.querySelector('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      const { token } = await api('/api/auth', {
+        method: 'POST', body: { passcode: root.querySelector('#g-pass').value },
+      });
+      store.set(KEY.group, token);
+      next();
+    } catch (err) { fail(root, err.message); }
+  });
+}
+
+// ---------- 2. who are you ----------
+
+function askWhoYouAre(root, next) {
+  h(root, `
+    <h2>Who are you?</h2>
+    <div class="stack">
+      <button id="w-claim" class="ghost">I'm already on the list</button>
+      <button id="w-signin" class="ghost">Sign in with my PIN</button>
+      <button id="w-new" class="ghost">I'm new — add me</button>
+    </div>
+    <p class="hint">Pick "already on the list" if Sam added you from the spreadsheet.</p>`);
+
+  root.querySelector('#w-claim').onclick  = () => claimScreen(root, next);
+  root.querySelector('#w-signin').onclick = () => signinScreen(root, next);
+  root.querySelector('#w-new').onclick    = () => onboardScreen(root, next);
+}
+
+function land(data, next) {
+  store.set(KEY.profile, data.token);
+  store.set(KEY.me, String(data.runner?.runner_key ?? ''));
+  next();
+}
+
+// ---------- 2a. claim an imported row ----------
+
+async function claimScreen(root, next) {
+  h(root, '<p class="empty">Loading the list…</p>');
+  let unclaimed;
+  try { ({ unclaimed } = await api('/api/profile/unclaimed')); }
+  catch (err) { return h(root, `<div class="error">${esc(err.message)}</div>`); }
+
+  if (!unclaimed.length) {
+    return h(root, `
+      <h2>Nobody left to claim</h2>
+      <div class="card">
+        <p class="meta">Everyone on the spreadsheet has already set a PIN.</p>
+        <button id="b-back" class="ghost">Back</button>
+      </div>`), root.querySelector('#b-back').onclick = () => askWhoYouAre(root, next);
+  }
+
+  h(root, `
+    <h2>Find yourself</h2>
+    <form class="card stack">
+      <label for="c-who">You are</label>
+      <select id="c-who">${unclaimed.map(u => `
+        <option value="${u.runner_key}">${esc(u.display_name)}${u.bib_number ? ` · ${esc(u.bib_number)}` : ''}</option>`).join('')}</select>
+      ${pinFields()}
+      <button type="submit">That's me</button>
+      <button type="button" id="c-back" class="ghost">Back</button>
+    </form>`);
+
+  root.querySelector('#c-back').onclick = () => askWhoYouAre(root, next);
+  root.querySelector('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      const pin = readPin(root);
+      land(await api('/api/profile/claim', {
+        method: 'POST',
+        body: { runner_key: Number(root.querySelector('#c-who').value), pin },
+      }), next);
+    } catch (err) { fail(root, err.message); }
+  });
+}
+
+// ---------- 2b. sign in ----------
+
+function signinScreen(root, next) {
+  h(root, `
+    <h2>Welcome back</h2>
+    <form class="card stack">
+      <label for="s-who">Bib number or name</label>
+      <input id="s-who" autocomplete="username">
+      <label for="s-pin">PIN</label>
+      <input id="s-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password">
+      <button type="submit">Sign in</button>
+      <button type="button" id="s-back" class="ghost">Back</button>
+      <p class="hint">Forgotten your PIN? Ask Sam to reset it, then claim your row again.</p>
+    </form>`);
+
+  root.querySelector('#s-back').onclick = () => askWhoYouAre(root, next);
+  root.querySelector('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      land(await api('/api/profile/signin', {
+        method: 'POST',
+        body: { who: root.querySelector('#s-who').value, pin: root.querySelector('#s-pin').value },
+      }), next);
+    } catch (err) { fail(root, err.message); }
+  });
+}
+
+// ---------- 2c. brand new person ----------
+
+async function onboardScreen(root, next) {
+  h(root, '<p class="empty">Loading…</p>');
+  let meta;
+  try { meta = await api('/api/meta'); }
+  catch (err) { return h(root, `<div class="error">${esc(err.message)}</div>`); }
+
+  h(root, `
+    <h2>Add yourself</h2>
+    <form class="card">
+      ${entryFields(meta)}
+      ${pinFields()}
+      <button type="submit">Save my info</button>
+      <button type="button" id="o-back" class="ghost">Back</button>
+    </form>`);
+
+  const form = root.querySelector('form');
+  const read = wireEntryFields(form, meta);
+  root.querySelector('#o-back').onclick = () => askWhoYouAre(root, next);
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      const pin = readPin(root);
+      land(await api('/api/profile/onboard', { method: 'POST', body: { ...read(), pin } }), next);
+    } catch (err) { fail(root, err.message); }
+  });
+}

@@ -1,0 +1,152 @@
+/* Minimal, mobile-first. Dark by default where the OS asks for it --
+   this gets read in a dark field at 5am more than anywhere else. */
+
+:root {
+  --bg:     #f7f7f8;
+  --card:   #ffffff;
+  --text:   #16181d;
+  --muted:  #6b7280;
+  --line:   #e4e4e7;
+  --accent: #16181d;
+  --warn:   #92400e;
+  --warnbg: #fef3c7;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:     #0d0e11;
+    --card:   #17191e;
+    --text:   #e8e9ec;
+    --muted:  #9096a1;
+    --line:   #2a2d35;
+    --accent: #e8e9ec;
+    --warn:   #fcd34d;
+    --warnbg: #2e2306;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0e11; --card: #17191e; --text: #e8e9ec; --muted: #9096a1;
+  --line: #2a2d35; --accent: #e8e9ec; --warn: #fcd34d; --warnbg: #2e2306;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 16px 56px;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+main { max-width: 620px; margin: 0 auto; }
+
+header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; padding: 20px 0 14px;
+}
+header h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+header .sub { color: var(--muted); font-size: 13px; }
+
+h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted); margin: 26px 0 10px; font-weight: 600;
+}
+
+/* ---------- cards ---------- */
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 13px 14px; margin-bottom: 8px;
+}
+.card.me { border-color: var(--accent); }
+
+.row { display: flex; align-items: center; gap: 10px; }
+.row + .row { margin-top: 5px; }
+.grow { flex: 1; min-width: 0; }
+
+.name { font-weight: 600; letter-spacing: -0.01em; }
+.bib  { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.meta { color: var(--muted); font-size: 14px; }
+.note { color: var(--muted); font-size: 13px; font-style: italic; margin-top: 4px; }
+
+.dot {
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.badge {
+  font-size: 11px; padding: 2px 7px; border-radius: 20px;
+  background: var(--warnbg); color: var(--warn); white-space: nowrap;
+}
+.tag {
+  font-size: 11px; padding: 2px 7px; border-radius: 20px;
+  border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+}
+
+/* ---------- controls ---------- */
+/* Label carries the field name; the hint is visibly secondary to it.
+   Same colour for both read as one run-on sentence. */
+label { display: block; font-size: 13px; color: var(--text); font-weight: 500; margin: 16px 0 5px; }
+label .hint { display: inline; font-weight: 400; color: var(--muted); margin: 0; }
+label .hint::before { content: "\00b7\00a0"; }
+
+input, select, button {
+  font: inherit; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 11px;
+  width: 100%; -webkit-appearance: none; appearance: none;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+button {
+  background: var(--accent); color: var(--bg); border: none;
+  font-weight: 600; cursor: pointer; margin-top: 16px;
+}
+button:active { opacity: 0.8; }
+button.ghost {
+  background: transparent; color: var(--text); border: 1px solid var(--line);
+  font-weight: 500; margin-top: 8px;
+}
+button.mini {
+  width: auto; margin: 0; padding: 5px 10px; font-size: 13px;
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+}
+button.mini.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+/* colour chips */
+.chips { display: flex; gap: 7px; }
+.chips button {
+  flex: 1; margin: 0; padding: 9px 0; background: var(--card);
+  color: var(--text); border: 1px solid var(--line); font-weight: 500;
+}
+.chips button[aria-pressed="true"] { border-width: 2px; font-weight: 700; }
+
+/* filter bar */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.search { margin-top: 10px; }
+
+.derived {
+  border: 1px dashed var(--line); border-radius: var(--radius);
+  padding: 11px 13px; margin-top: 16px; color: var(--muted); font-size: 14px;
+}
+.derived strong { color: var(--text); font-size: 16px; }
+
+.hint  { font-size: 12px; color: var(--muted); margin-top: 5px; }
+.error {
+  background: var(--warnbg); color: var(--warn); font-size: 14px;
+  padding: 10px 12px; border-radius: 8px; margin-top: 14px;
+}
+.empty { color: var(--muted); font-size: 14px; padding: 4px 0 8px; }
+
+svg.icon { width: 15px; height: 15px; flex: none; stroke: currentColor;
+           fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.star { background: none; border: none; width: auto; margin: 0; padding: 4px;
+        cursor: pointer; color: var(--muted); line-height: 1; }
+.star.on { color: #eab308; }
+.star svg { width: 19px; height: 19px; }
+
+a { color: var(--text); }
+.center { text-align: center; }
+.stack > * + * { margin-top: 8px; }
