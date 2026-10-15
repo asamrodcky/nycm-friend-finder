@@ -57,17 +57,30 @@ function askPassword(root, next) {
 
 // ---------- 2. who are you ----------
 
-function askWhoYouAre(root, next) {
+async function askWhoYouAre(root, next) {
+  // Claiming only works on rows somebody else created and nobody has
+  // PINned yet -- a spreadsheet import. Onboarding always sets a PIN, so
+  // on a self-serve setup that list is permanently empty and the button
+  // is a dead end. Worse, it is the one a returning person reaches for,
+  // because they ARE already on the list. So only offer it when it can
+  // actually do something; it comes back by itself if a roster is
+  // imported later.
+  let claimable = 0;
+  try { claimable = (await api('/api/profile/unclaimed')).unclaimed.length; }
+  catch { /* fall through to the two-button form */ }
+
   h(root, `
     <h2>Who are you?</h2>
     <div class="stack">
-      <button id="w-claim" class="ghost">I'm already on the list</button>
-      <button id="w-signin" class="ghost">Sign in with my PIN</button>
+      ${claimable ? `<button id="w-claim" class="ghost">Someone already added me</button>` : ''}
+      <button id="w-signin" class="ghost">I've been here before</button>
       <button id="w-new" class="ghost">I'm new — add me</button>
     </div>
-    <p class="hint">Pick "already on the list" if Sam added you from the spreadsheet.</p>`);
+    <p class="hint">${claimable
+      ? 'Pick "someone already added me" if your name was entered for you.'
+      : 'Been here before? Sign in with your bib number or name and your PIN.'}</p>`);
 
-  root.querySelector('#w-claim').onclick  = () => claimScreen(root, next);
+  if (claimable) root.querySelector('#w-claim').onclick = () => claimScreen(root, next);
   root.querySelector('#w-signin').onclick = () => signinScreen(root, next);
   root.querySelector('#w-new').onclick    = () => onboardScreen(root, next);
 }
