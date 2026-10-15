@@ -7,10 +7,20 @@
 import { type Env, requireGroup } from '../../lib/auth';
 import { json } from '../../lib/http';
 
-/** 04:00 - 08:00 in 15-minute steps: covers every ferry and bus slot. */
+/**
+ * 04:00 - 08:30 in 15-minute steps.
+ *
+ * The upper bound is the last ferry, not a guess. If a bus turns out to
+ * run later, raise LAST_SLOT -- nothing else needs changing: the column
+ * is free text, the CHECK accepts any HH:MM, and the form builds this
+ * dropdown from whatever comes back.
+ */
+const FIRST_SLOT = 4 * 60;
+const LAST_SLOT = 8 * 60 + 30;
+
 function departureSlots(): { value: string; label: string }[] {
   const out: { value: string; label: string }[] = [];
-  for (let m = 4 * 60; m <= 8 * 60; m += 15) {
+  for (let m = FIRST_SLOT; m <= LAST_SLOT; m += 15) {
     const h = Math.floor(m / 60);
     const mm = String(m % 60).padStart(2, '0');
     out.push({
