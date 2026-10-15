@@ -38,26 +38,54 @@ npm run db:q "SELECT * FROM v_runner_start"   # query local
 npm run db:reset:local                         # wipe + rebuild local
 ```
 
+## Access model
+
+Two layers, because they answer different questions.
+
+| Token | How you get it | What it unlocks |
+|---|---|---|
+| **group** | the shared group password | the onboarding form and sign-in |
+| **profile** | claim / onboard / sign in with a PIN | the roster, your own entry, your saved list |
+
+A profile token is only issued after group auth, so it implies group
+membership and satisfies both checks. Both are HMAC-signed expiry stamps
+with a 30-day TTL — stateless, no session table to clean up at teardown.
+
+**The PIN is identity, not security.** It answers "this is my new phone,
+re-attach me to my row" — `localStorage` does not travel between a laptop
+and a phone, so without it you would onboard twice and end up as two
+people in different corrals. It is hashed (PBKDF2-SHA256, per-runner
+salt) because snapshots get committed and people reuse PINs, but a
+4-digit PIN behind a shared password is not a security boundary and the
+app does not pretend otherwise.
+
+Sign-in accepts **a bib number or a name**, both with the PIN. Bib is the
+fast path, but some people have no bib yet, and anyone who corrects a
+wrong bib would otherwise lock themselves out.
+
 ## API
 
-All routes need `Authorization: Bearer <token>` except `POST /api/auth`.
+| Route | Method | Needs | Purpose |
+|---|---|---|---|
+| `/api/auth` | POST | — | `{passcode}` -> group token |
+| `/api/meta` | GET | group | Seeded dimensions + departure slots, for the dropdowns |
+| `/api/profile/unclaimed` | GET | group | The "already on the roster?" picker |
+| `/api/profile/claim` | POST | group | Claim an imported row, set its PIN |
+| `/api/profile/onboard` | POST | group | Brand-new person: row + PIN + first assignment |
+| `/api/profile/signin` | POST | group | Bib-or-name + PIN -> profile token |
+| `/api/runners` | GET | profile | The whole roster, one shot |
+| `/api/runners/me` | POST | profile | Update my own entry |
+| `/api/runners/me` | DELETE | profile | Take myself off the roster |
+| `/api/saved` | GET | profile | People I saved, and how we overlap |
+| `/api/saved` | POST | profile | Save someone |
+| `/api/saved` | DELETE | profile | Unsave someone (`?key=N`) |
+| `/api/meetups` | GET | profile | The four discovery tiers plus the gap list |
+
 Reads hit views only; the API never touches a base table.
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/auth` | POST | `{passcode}` -> `{token}`. HMAC-signed expiry stamp, 30-day TTL |
-| `/api/meta` | GET | Seeded dimensions + departure slots, for the form dropdowns |
-| `/api/runners` | GET | The whole roster, one shot; the page filters client side |
-| `/api/runners` | POST | Create (no `runner_key`) or update (with one) |
-| `/api/runners/:key` | DELETE | Soft delete -- supersedes the live row, keeps history |
-| `/api/meetups` | GET | The four match tiers plus the gap list |
-
-Entries are keyed by `runner_key`, not bib number: bibs are optional and
-some people genuinely do not have one yet.
-
-The passcode itself never reaches browser storage. `POST /api/auth`
-exchanges it for a signed token, and that is what sits in `localStorage`.
-Stateless, so there is no session table to clean up at teardown.
+**There is no route for editing someone else's entry.** The runner key
+comes from the profile token, never the request body — otherwise the PIN
+would be guarding nothing.
 
 ## Data model
 
@@ -66,14 +94,28 @@ A **star schema**, because the point of this project is to practise one.
 ```
               dim_color ──┐
               dim_wave  ──┤
-              dim_corral──┼──> fct_runner_start <── dim_runner
-          dim_transport ──┘
+              dim_corral──┼──> fct_runner_start <── dim_runner ──┐
+          dim_transport ──┘                              ▲       │
+                                                         └───────┘
+                                              fct_runner_saved
+                                           (bridge, runner to runner)
 ```
 
-`fct_runner_start` is a **factless fact table** — it has no additive
-measures. It exists to record that a runner *is assigned* to a color, wave,
-corral and transport plan. Kimball's coverage/event pattern; `COUNT(*)` is
-the only measure available, which is the point.
+**Both fact tables are factless.** Neither has an additive measure.
+`fct_runner_start` records that a runner *is assigned* to a color, wave,
+corral and transport plan; `fct_runner_saved` records only that one person
+wants to find another. Kimball's coverage/event pattern twice over, and
+`COUNT(*)` is the only measure either one offers — which is the point.
+
+`fct_runner_saved` is also a **many-to-many bridge** from `dim_runner` back
+to itself. Unlike the start table it is *not* insert-only: unsaving someone
+is a correction, not history, and keeping it would turn the snapshot into a
+record of who changed their mind about whom.
+
+The payoff view is `v_saved_overlap` — for each person you saved, *how* do
+you line up? Every comparison is NULL-guarded, since `NULL = NULL` is NULL
+rather than true, and two people who both have no corral must not read as
+sharing one.
 
 Two design notes worth knowing before you change anything:
 

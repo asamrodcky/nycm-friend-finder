@@ -1,4 +1,4 @@
-import { type Env, mintToken, passcodeMatches } from '../../lib/auth';
+import { type Env, mintGroupToken, passcodeMatches } from '../../lib/auth';
 import { err, json } from '../../lib/http';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -17,5 +17,5 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!passcode) return err('passcode is required');
   if (!passcodeMatches(passcode, env)) return err('that passcode is not right', 401);
 
-  return json({ token: await mintToken(env) });
+  return json({ token: await mintGroupToken(env) });
 };

@@ -5,7 +5,6 @@
 // person a sentence they can act on.
 
 export interface RunnerInput {
-  runner_key: number | null;
   display_name: string;
   bib_number: string | null;
   color_key: number | null;
@@ -52,7 +51,6 @@ export function parseRunner(body: unknown): { value?: RunnerInput; errors: strin
   }
 
   const value: RunnerInput = {
-    runner_key:        nullableKey(b.runner_key, 'runner_key', errors),
     display_name:      display_name ?? '',
     bib_number:        nullableText(b.bib_number, 20, 'bib number', errors),
     color_key:         nullableKey(b.color_key, 'color', errors),

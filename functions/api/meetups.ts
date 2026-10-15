@@ -6,12 +6,12 @@
 // almost nobody knows their slot yet, while same-village-and-wave
 // catches most of the group. The page leads with whatever has rows.
 
-import { type Env, requireAuth } from '../../lib/auth';
+import { type Env, requireProfile } from '../../lib/auth';
 import { json } from '../../lib/http';
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const blocked = await requireAuth(request, env);
-  if (blocked) return blocked;
+  const who = await requireProfile(request, env);
+  if (who instanceof Response) return who;
 
   const [corral, wave, vehicle, exact, gaps] = await env.DB.batch([
     env.DB.prepare('SELECT * FROM v_meetup_corral ORDER BY start_time_local, color_name, corral_letter'),

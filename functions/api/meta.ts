@@ -4,7 +4,7 @@
 // a seeded dimension row -- a transport option, a bridge deck -- changes
 // the UI with no code change and no redeploy.
 
-import { type Env, requireAuth } from '../../lib/auth';
+import { type Env, requireGroup } from '../../lib/auth';
 import { json } from '../../lib/http';
 
 /** 04:00 - 08:00 in 15-minute steps: covers every ferry and bus slot. */
@@ -22,7 +22,7 @@ function departureSlots(): { value: string; label: string }[] {
 }
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const blocked = await requireAuth(request, env);
+  const blocked = await requireGroup(request, env);
   if (blocked) return blocked;
 
   const [colors, waves, corrals, transports] = await env.DB.batch([
