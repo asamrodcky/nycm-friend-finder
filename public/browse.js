@@ -1,93 +1,121 @@
 // The roster page.
 //
-// Order is deliberate: the people you chose to care about, then the
-// groups that might be worth caring about, then everyone. On real data
-// the exact tier (same vehicle AND same minute) is usually empty because
-// almost nobody knows their slot yet -- so empty tiers are hidden rather
-// than shown as a row of zeros.
+// Order: the people you chose, then the people who overlap with YOU,
+// then everyone. Every one of those is a real card with a star, so you
+// can act on a suggestion where you read it rather than scrolling off to
+// hunt for the same name in the full list.
+//
+// Overlap is computed here rather than fetched. The browser already has
+// the whole roster and knows who you are, so the only thing the server
+// could add is a round trip -- and doing it locally means each match is
+// a real runner object with a key, which is what makes it starrable.
+//
+// This deliberately replaced the old group-wide tiers. v_meetup_corral
+// and friends find clusters anywhere in the roster, not clusters
+// containing you, so "Same corral" was heading a list of corrals you
+// were not in. Those views still exist for analysis in sql/.
 
 import { api, store, KEY, esc, icon, clock, startLine, transportIcon } from './app.js';
 import { ensureAccess } from './gate.js';
 
 const app = document.querySelector('#app');
-let roster = [], saved = [], meetups = {}, me = null;
+let roster = [], saved = [], gaps = [], me = null;
 const savedKeys = () => new Set(saved.map(s => s.saved_runner_key));
+
+// ---------- overlap ----------
+// Mirrors v_saved_overlap. Note every test checks both sides for null
+// first: in JS `null === null` is true, so without that guard two people
+// who both have no corral would read as sharing one -- the same trap the
+// SQL views guard against.
+
+const both = (a, b) => a !== null && a !== undefined && a === b;
+
+// Strongest first within each family. Reporting one from each avoids
+// "same corral + wave + village", which are all the same fact.
+const START_FAMILY = [
+  ['corral',  'corral',  (m, t) => both(m.color_key, t.color_key) && both(m.wave_key, t.wave_key) && both(m.corral_key, t.corral_key)],
+  ['wave',    'wave',    (m, t) => both(m.color_key, t.color_key) && both(m.wave_key, t.wave_key)],
+  ['village', 'village', (m, t) => both(m.color_key, t.color_key)],
+];
+const RIDE_FAMILY = [
+  ['slot', 'ride + time', (m, t) => m.transport_is_matchable && both(m.transport_key, t.transport_key) && both(m.depart_time_local, t.depart_time_local)],
+  ['ride', 'ride',        (m, t) => m.transport_is_matchable && both(m.transport_key, t.transport_key)],
+];
+
+// How likely each overlap makes an actual meetup, strongest first. This
+// is one combined ladder rather than two family scores: sharing a
+// village AND a wave puts you in the same place at the same time, which
+// beats sharing a village with someone on a different wave even if you
+// are both on ferries. But sharing a vehicle at the same minute beats
+// both, because you are literally on the same boat.
+const LADDER = [
+  (m, t) => RIDE_FAMILY[0][2](m, t),   // same ride + time
+  (m, t) => START_FAMILY[0][2](m, t),  // same corral
+  (m, t) => START_FAMILY[1][2](m, t),  // same village + wave
+  (m, t) => RIDE_FAMILY[1][2](m, t),   // same ride, time unknown
+  (m, t) => START_FAMILY[2][2](m, t),  // same village
+];
+
+/** Returns { rank, label } or null when nothing is shared. */
+function overlap(mine, them) {
+  if (!mine) return null;
+  const start = START_FAMILY.find(([, , test]) => test(mine, them));
+  const ride  = RIDE_FAMILY.find(([, , test]) => test(mine, them));
+  if (!start && !ride) return null;
+
+  // Sort on the ladder rung first, then break ties by how much ELSE is
+  // shared: someone on your ferry who is also in your village beats
+  // someone on your ferry and nothing more.
+  const rung      = LADDER.findIndex(test => test(mine, them));
+  const startTier = start ? START_FAMILY.indexOf(start) : 9;
+  const rideTier  = ride ? RIDE_FAMILY.indexOf(ride) : 9;
+
+  return {
+    rank: rung * 100 + startTier * 10 + rideTier,
+    label: 'same ' + [start?.[1], ride?.[1]].filter(Boolean).join(' + '),
+  };
+}
 
 // ---------- cards ----------
 
-function card(r, { mine = false } = {}) {
+function card(r, { mine = false, tag = null } = {}) {
   const isSaved = savedKeys().has(r.runner_key);
-  const transport = r.transport_label
-    ? `<div class="row meta">${transportIcon(r)}<span>${esc(r.transport_label)}${r.depart_time_local ? ' · ' + clock(r.depart_time_local) : ''}</span></div>`
-    : '';
+  const dot = r.color_hex
+    ? `<span class="dot" style="background:${r.color_hex}"></span>`
+    : '<span class="dot" style="background:var(--line)"></span>';
   return `
     <div class="card${mine ? ' me' : ''}">
       <div class="row">
-        ${r.color_hex ? `<span class="dot" style="background:${r.color_hex}"></span>` : '<span class="dot" style="background:var(--line)"></span>'}
+        ${dot}
         <div class="grow">
           <span class="name">${esc(r.display_name)}</span>
           ${mine ? ' <span class="tag">you</span>' : ''}
           ${r.bib_number ? ` <span class="bib">#${esc(r.bib_number)}</span>` : ''}
         </div>
-        ${r.is_complete ? '' : '<span class="badge">needs info</span>'}
+        ${tag ? `<span class="tag">${esc(tag)}</span>` : ''}
+        ${r.is_complete || tag ? '' : '<span class="badge">needs info</span>'}
         ${mine ? '' : `<button class="star${isSaved ? ' on' : ''}" data-save="${r.runner_key}"
-             aria-label="${isSaved ? 'Remove from my people' : 'Save this person'}"
+             aria-label="${isSaved ? `Remove ${esc(r.display_name)} from my people` : `Save ${esc(r.display_name)}`}"
              aria-pressed="${isSaved}">${icon('star', { filled: isSaved })}</button>`}
       </div>
       <div class="row meta">${esc(startLine(r))}</div>
-      ${transport}
+      ${r.transport_label ? `<div class="row meta">${transportIcon(r)}<span>${esc(r.transport_label)}${r.depart_time_local ? ' · ' + clock(r.depart_time_local) : ''}</span></div>` : ''}
       ${r.meetup_note ? `<div class="note">“${esc(r.meetup_note)}”</div>` : ''}
     </div>`;
 }
 
-const OVERLAP = [
-  ['same_slot',    'same vehicle, same time'],
-  ['same_corral',  'same corral'],
-  ['same_wave',    'same village + wave'],
-  ['same_vehicle', 'same vehicle'],
-  ['same_village', 'same village'],
-];
-
-function savedCard(s) {
-  const hit = OVERLAP.find(([k]) => s[k]);
-  return `
-    <div class="card">
-      <div class="row">
-        ${s.color_hex ? `<span class="dot" style="background:${s.color_hex}"></span>` : '<span class="dot" style="background:var(--line)"></span>'}
-        <div class="grow"><span class="name">${esc(s.display_name)}</span>
-          ${s.bib_number ? ` <span class="bib">#${esc(s.bib_number)}</span>` : ''}</div>
-        <span class="tag">${hit ? esc(hit[1]) : 'no overlap yet'}</span>
-        <button class="star on" data-save="${s.saved_runner_key}"
-                aria-label="Remove from my people" aria-pressed="true">${icon('star', { filled: true })}</button>
-      </div>
-      <div class="row meta">${esc(startLine(s))}</div>
-      ${s.transport_label ? `<div class="row meta">${transportIcon(s)}<span>${esc(s.transport_label)}${s.depart_time_local ? ' · ' + clock(s.depart_time_local) : ''}</span></div>` : ''}
-      ${s.meetup_note ? `<div class="note">“${esc(s.meetup_note)}”</div>` : ''}
-    </div>`;
-}
-
-// ---------- discovery tiers ----------
-
-function tier(title, rows, line) {
-  if (!rows?.length) return '';
-  return `<h2>${esc(title)}</h2>` + rows.map(r => `
-    <div class="card"><div class="row">
-      <div class="grow"><span class="name">${esc(line(r))}</span></div>
-      <span class="tag">${r.runner_count}</span>
-    </div><div class="row meta">${esc(r.runners)}</div></div>`).join('');
-}
-
-function tiers() {
-  return [
-    tier('Same vehicle, same time', meetups.exact_transport,
-      r => `${r.transport_label} · ${clock(r.depart_time_local)}`),
-    tier('Same corral', meetups.same_corral,
-      r => `${r.color_name} · Wave ${r.wave_num} · Corral ${r.corral_letter}`),
-    tier('Same village and wave', meetups.same_wave,
-      r => `${r.color_name} · Wave ${r.wave_num} · ${clock(r.start_time_local)}`),
-    tier('On the same transport', meetups.same_vehicle,
-      r => `${r.transport_label}${r.with_times < r.runner_count ? ` · only ${r.with_times} said when` : ''}`),
-  ].join('');
+// Saved people are labelled by the SAME client-side overlap as everyone
+// else. v_saved_overlap reports the same facts, but as separate boolean
+// columns -- rendering those directly made a person's tag change the
+// moment you starred them ("same wave + ride" becoming "same wave"),
+// which looks like the app changed its mind. The roster row carries the
+// dimension keys the overlap needs, so look them up there.
+function savedCard(s, mine) {
+  const live = roster.find(r => r.runner_key === s.saved_runner_key);
+  const hit = live ? overlap(mine, live) : null;
+  return card(live ?? { ...s, runner_key: s.saved_runner_key }, {
+    tag: hit ? hit.label : (live ? 'no overlap yet' : 'not on the roster'),
+  });
 }
 
 // ---------- filters ----------
@@ -95,11 +123,9 @@ function tiers() {
 const filter = { color: null, wave: null, transport: null, q: '' };
 
 function filterBar() {
-  const colors = [...new Map(roster.filter(r => r.color_name)
-    .map(r => [r.color_name, r.color_hex])).entries()];
+  const colors = [...new Map(roster.filter(r => r.color_name).map(r => [r.color_name, r.color_hex])).entries()];
   const waves = [...new Set(roster.filter(r => r.wave_num).map(r => r.wave_num))].sort();
   const transports = [...new Set(roster.filter(r => r.transport_label).map(r => r.transport_label))].sort();
-
   const btn = (type, value, label, style = '') =>
     `<button class="mini${filter[type] === value ? ' on' : ''}" data-f="${type}" data-v="${esc(value)}" ${style}>${esc(label)}</button>`;
 
@@ -128,8 +154,18 @@ function visible() {
 
 function render() {
   const mine = roster.find(r => r.runner_key === me);
+  const already = savedKeys();
+
+  // Anyone you have already saved is in "your people" -- showing them
+  // again as a suggestion would be suggesting what you already did.
+  const near = roster
+    .filter(r => r.runner_key !== me && !already.has(r.runner_key))
+    .map(r => ({ r, hit: overlap(mine, r) }))
+    .filter(x => x.hit)
+    .sort((a, b) => a.hit.rank - b.hit.rank || a.r.display_name.localeCompare(b.r.display_name));
+
   const others = visible().filter(r => r.runner_key !== me);
-  const gaps = meetups.gaps?.length ?? 0;
+  const total = roster.length - (mine ? 1 : 0);
 
   app.innerHTML = `
     ${mine
@@ -139,16 +175,18 @@ function render() {
 
     <h2>Your people ${saved.length ? `(${saved.length})` : ''}</h2>
     ${saved.length
-      ? saved.map(savedCard).join('')
-      : '<p class="empty">Tap the star on anyone below to add them here, with how you line up.</p>'}
+      ? saved.map(s => savedCard(s, mine)).join('')
+      : `<p class="empty">Nobody yet. Tap a star to add someone you want to find on race morning.</p>`}
 
-    ${tiers()}
+    ${near.length ? `<h2>People near you (${near.length})</h2>
+      ${near.map(x => card(x.r, { tag: x.hit.label })).join('')}` : ''}
 
-    <h2>Everyone (${others.length}${others.length !== roster.length - (mine ? 1 : 0) ? ` of ${roster.length - (mine ? 1 : 0)}` : ''})</h2>
+    <h2>Everyone (${others.length}${others.length !== total ? ` of ${total}` : ''})</h2>
     ${filterBar()}
     ${others.length ? others.map(r => card(r)).join('') : '<p class="empty">Nobody matches that.</p>'}
 
-    ${gaps ? `<h2>Still missing info</h2><p class="empty">${gaps} ${gaps === 1 ? 'person' : 'people'} haven't filled everything in — ${esc(meetups.gaps.map(g => g.display_name).join(', '))}.</p>` : ''}
+    ${gaps.length ? `<h2>Still missing info</h2>
+      <p class="empty">${gaps.length} ${gaps.length === 1 ? 'person hasn\'t' : 'people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>` : ''}
 
     <button class="ghost" id="signout">Sign out of this device</button>`;
 
@@ -164,21 +202,21 @@ app.addEventListener('click', async e => {
   if (star) {
     const key = Number(star.dataset.save);
     const on = savedKeys().has(key);
+    star.disabled = true;
     try {
       if (on) await api(`/api/saved?key=${key}`, { method: 'DELETE' });
       else    await api('/api/saved', { method: 'POST', body: { saved_runner_key: key } });
       ({ saved } = await api('/api/saved'));
       render();
-    } catch (err) { alert(err.message); }
+    } catch (err) { star.disabled = false; alert(err.message); }
     return;
   }
 
   const f = e.target.closest('[data-f]');
   if (f) {
-    const value = f.dataset.v === 'null' ? null : f.dataset.v;
-    const typed = f.dataset.f === 'wave' ? Number(value) : value;
-    filter[f.dataset.f] = filter[f.dataset.f] === typed ? null : typed;
-    if (f.dataset.f === 'color' && value === null) { filter.color = null; }
+    const raw = f.dataset.v === 'null' ? null : f.dataset.v;
+    const value = f.dataset.f === 'wave' ? Number(raw) : raw;
+    filter[f.dataset.f] = filter[f.dataset.f] === value ? null : value;
     render();
     return;
   }
@@ -202,7 +240,7 @@ app.addEventListener('input', e => {
   me = await ensureAccess(app);
   try {
     const [a, b, c] = await Promise.all([api('/api/runners'), api('/api/saved'), api('/api/meetups')]);
-    roster = a.runners; me = a.me ?? me; saved = b.saved; meetups = c;
+    roster = a.runners; me = a.me ?? me; saved = b.saved; gaps = c.gaps ?? [];
     render();
   } catch (err) {
     // An expired or revoked token should send you back to the gate, not
