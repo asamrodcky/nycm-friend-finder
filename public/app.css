@@ -120,7 +120,23 @@ button.mini.on { background: var(--accent); color: var(--bg); border-color: var(
   flex: 1; margin: 0; padding: 9px 0; background: var(--card);
   color: var(--text); border: 1px solid var(--line); font-weight: 500;
 }
-.chips button[aria-pressed="true"] { border-width: 2px; font-weight: 700; }
+/* Selected fills with the start colour. A 1px->2px border change reads
+   as nothing on a dark background, and this is a COLOUR picker -- so
+   selection also carries a check mark, which does not depend on seeing
+   the colour at all.
+
+   color-mix darkens the fill ~15%: white on the seeded orange is only
+   3.6:1, which fails AA for text this size. Darkening clears it for all
+   three without touching the seed data the dots also use. The plain
+   background line above it is the fallback. */
+.chips button[aria-pressed="true"] {
+  background: var(--chip);
+  background: color-mix(in srgb, var(--chip) 85%, #000);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 700;
+}
+.chips button[aria-pressed="true"]::before { content: "\2713\00a0"; }
 
 /* filter bar */
 .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }

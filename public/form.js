@@ -11,7 +11,7 @@ export function entryFields(meta, cur = {}) {
   const chips = meta.colors.map(c => `
     <button type="button" class="chip" data-color="${c.color_key}"
             aria-pressed="${cur.color_key === c.color_key}"
-            style="border-color:${c.color_hex}">${esc(c.color_name)}</button>`).join('');
+            style="--chip:${c.color_hex};border-color:${c.color_hex}">${esc(c.color_name)}</button>`).join('');
 
   const opts = (rows, valueKey, labelFn, selected) =>
     `<option value="">— not sure yet —</option>` +
