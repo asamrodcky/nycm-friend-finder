@@ -5,7 +5,7 @@
 // supersedes the previous row rather than overwriting it, so moving to a
 // later wave stays visible in the snapshot.
 
-import { api, store, KEY, esc } from './app.js';
+import { api, store, KEY, esc, watchForUpdates } from './app.js';
 import { ensureAccess } from './gate.js';
 import { entryFields, wireEntryFields } from './form.js';
 
@@ -40,6 +40,11 @@ const app = document.querySelector('#app');
 
   const form = app.querySelector('form');
   const read = wireEntryFields(form, meta);
+
+  // A new deploy must never eat what someone has typed into the form.
+  let dirty = false;
+  form.addEventListener('input', () => { dirty = true; });
+  watchForUpdates(() => !dirty);
 
   form.addEventListener('submit', async e => {
     e.preventDefault();

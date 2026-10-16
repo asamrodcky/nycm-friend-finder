@@ -15,7 +15,7 @@
 // containing you, so "Same corral" was heading a list of corrals you
 // were not in. Those views still exist for analysis in sql/.
 
-import { api, store, KEY, esc, icon, clock, startLine, transportIcon } from './app.js';
+import { api, store, KEY, esc, icon, clock, startLine, transportIcon, watchForUpdates } from './app.js';
 import { ensureAccess } from './gate.js';
 
 const app = document.querySelector('#app');
@@ -238,6 +238,10 @@ app.addEventListener('input', e => {
 
 (async () => {
   me = await ensureAccess(app);
+
+  // Not while a filter is up: reloading would drop what they narrowed to.
+  watchForUpdates(() => !filter.q && !filter.color && !filter.wave && !filter.transport);
+
   try {
     const [a, b, c] = await Promise.all([api('/api/runners'), api('/api/saved'), api('/api/meetups')]);
     roster = a.runners; me = a.me ?? me; saved = b.saved; gaps = c.gaps ?? [];

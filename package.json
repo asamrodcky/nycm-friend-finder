@@ -5,6 +5,7 @@
   "description": "Find your friends at the NYC Marathon start",
   "scripts": {
     "dev": "wrangler pages dev",
+    "deploy": "node scripts/stamp_version.mjs && wrangler pages deploy",
     "db:migrate:local": "wrangler d1 migrations apply nycm-friendfinder --local",
     "db:migrate:remote": "wrangler d1 migrations apply nycm-friendfinder --remote",
     "db:reset:local": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local",

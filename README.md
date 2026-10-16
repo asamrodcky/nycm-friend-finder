@@ -208,8 +208,14 @@ npx wrangler d1 migrations apply nycm-friendfinder --remote
 npx wrangler pages project create nycm-friendfinder
 npx wrangler pages secret put GROUP_PASSCODE --project-name nycm-friendfinder
 npx wrangler pages secret put TOKEN_SECRET   --project-name nycm-friendfinder
-npx wrangler pages deploy public
+npm run deploy
 ```
+
+`npm run deploy` stamps `public/version.json` with a hash of the frontend before handing
+off to `wrangler pages deploy`. That stamp is how a tab that is already open notices a new
+build and reloads itself; `public/_headers` is what stops the browser holding the old
+modules for four hours. Deploying with bare `wrangler pages deploy` works, it just skips
+the stamp.
 
 ## Teardown
 

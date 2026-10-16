@@ -82,3 +82,36 @@ export const transportIcon = r => icon(r.transport_icon || 'unknown');
 /** Avoids injecting roster text, which people type, straight into HTML. */
 export const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// ---------- new deploys ----------
+
+/**
+ * Reloads the page when a newer build is live.
+ *
+ * Cache headers fix the next visit; they do nothing for a tab that is
+ * already open, and on a phone the roster tab stays open for days. The
+ * deploy script stamps version.json, so comparing it when the tab comes
+ * back into view is enough to pick up a fix without anyone being told to
+ * refresh.
+ *
+ * safe() is the veto: a half-typed form or an active search is worth
+ * more than being on the newest build, so the page reloads at the next
+ * opportunity instead.
+ */
+export function watchForUpdates(safe = () => true) {
+  const read = async () => {
+    try {
+      const res = await fetch('version.json', { cache: 'no-store' });
+      return res.ok ? (await res.json()).build : null;
+    } catch { return null; }   // offline: try again next time
+  };
+
+  read().then(booted => {
+    if (!booted) return;       // never stamped, nothing to compare against
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState !== 'visible' || !safe()) return;
+      const live = await read();
+      if (live && live !== booted) location.reload();
+    });
+  });
+}
