@@ -15,18 +15,40 @@
 # If a build step with hashed filenames ever lands, flip the hashed
 # assets to `max-age=31536000, immutable` and leave the HTML revalidating.
 #
-# Scoped by extension rather than `/*` on purpose: a blanket rule also
-# matches the Functions routes, and `_headers` APPENDS to what a Function
-# already sent, so /api/* came back `no-cache, no-store`. The API's own
-# `no-store` in lib/http.ts is the stronger and correct answer for a
-# private roster, and these rules leave it alone.
+# EVERY RULE HERE IS AN EXACT PATH, and it has to stay that way. The first
+# version of this file used `/*.js` and `/*.css`, which `wrangler pages
+# dev` parses and applies -- and which the production edge silently
+# ignores. It deployed clean and changed nothing: the assets still came
+# back `max-age=14400`. A splat appears to need to be the last thing in
+# the pattern, so a mid-pattern one matches nothing and reports no error.
+# Do not reintroduce one without checking the LIVE headers afterwards.
+#
+# A blanket `/*` would work, but `_headers` APPENDS to what a Pages
+# Function already sent, so it would make /api/* come back
+# `Cache-Control: no-cache, no-store`. The API's own `no-store` in
+# lib/http.ts is the stronger and correct answer for a private roster of
+# real names and bib numbers, and exact paths leave it alone.
+#
+# Adding a module to public/? Add it here too. `npm run deploy` checks
+# this list against the directory and refuses to deploy if one is missing,
+# so the mistake cannot reach production silently -- which is exactly how
+# the splat version got there.
+#
 /
   Cache-Control: no-cache
-/*.html
+/me
   Cache-Control: no-cache
-/*.js
+/app.css
   Cache-Control: no-cache
-/*.css
+/app.js
+  Cache-Control: no-cache
+/browse.js
+  Cache-Control: no-cache
+/form.js
+  Cache-Control: no-cache
+/gate.js
+  Cache-Control: no-cache
+/me.js
   Cache-Control: no-cache
 /version.json
   Cache-Control: no-cache

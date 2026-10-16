@@ -14,6 +14,7 @@ import { join } from 'node:path';
 
 const DIR = 'public';
 const STAMP = 'version.json';
+const HEADERS = '_headers';
 
 const files = readdirSync(DIR)
   .filter(f => /\.(html|js|css)$/.test(f) && f !== STAMP)
@@ -25,6 +26,31 @@ for (const f of files) {
   hash.update(readFileSync(join(DIR, f)));
 }
 const build = hash.digest('hex').slice(0, 12);
+
+// Every asset needs an exact rule in _headers, because the splat
+// patterns that would have covered them are ignored by the production
+// edge without complaining -- the bug this whole mechanism exists to fix
+// shipped that way once already. Pages serves foo.html at /foo (and
+// index.html at /), so the served path is not just '/' + filename.
+const served = f =>
+  f === 'index.html' ? '/' : '/' + f.replace(/\.html$/, '');
+
+const rules = new Set(
+  readFileSync(join(DIR, HEADERS), 'utf8')
+    .split('\n')
+    .filter(l => l.startsWith('/'))
+    .map(l => l.trim()),
+);
+
+const uncovered = [...files, STAMP].map(served).filter(path => !rules.has(path));
+if (uncovered.length) {
+  console.error(
+    `${HEADERS} has no rule for ${uncovered.join(', ')}.\n` +
+    `Without one, Pages serves it with max-age=14400 and a deploy will not ` +
+    `reach anyone who already loaded the site. Add an exact path.`,
+  );
+  process.exit(1);
+}
 
 let current = {};
 try { current = JSON.parse(readFileSync(join(DIR, STAMP), 'utf8')); } catch { /* first run */ }
