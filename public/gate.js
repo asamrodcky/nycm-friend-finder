@@ -12,8 +12,12 @@ import { entryFields, wireEntryFields, pinFields, readPin } from './form.js';
 
 const h = (el, html) => { el.innerHTML = html; return el; };
 
+// role="alert" so a rejected password or a mismatched PIN is spoken when
+// it appears. Without it the only feedback is visual, and the failure
+// shows up below the button you just pressed.
 function fail(root, message) {
   const box = root.querySelector('.error') || Object.assign(document.createElement('div'), { className: 'error' });
+  box.setAttribute('role', 'alert');
   box.textContent = message;
   root.querySelector('form')?.append(box);
 }
@@ -97,7 +101,7 @@ async function claimScreen(root, next) {
   h(root, '<p class="empty">Loading the list…</p>');
   let unclaimed;
   try { ({ unclaimed } = await api('/api/profile/unclaimed')); }
-  catch (err) { return h(root, `<div class="error">${esc(err.message)}</div>`); }
+  catch (err) { return h(root, `<div class="error" role="alert">${esc(err.message)}</div>`); }
 
   // Two different situations land here and the copy has to fit both: a
   // fresh database with nobody imported at all (which is how production
@@ -170,8 +174,8 @@ function signinScreen(root, next) {
   root.querySelector('#s-noBib').onclick = e => {
     root.querySelector('#s-by-bib').innerHTML = `
       <label for="s-who">Your name</label>
-      <input id="s-who" autocomplete="username" required>
-      <div class="hint">Exactly as you typed it when you signed up.</div>`;
+      <input id="s-who" autocomplete="username" required aria-describedby="s-who-hint">
+      <div class="hint" id="s-who-hint">Exactly as you typed it when you signed up.</div>`;
     e.target.remove();
     root.querySelector('#s-who').focus();
   };
@@ -194,7 +198,7 @@ async function onboardScreen(root, next) {
   h(root, '<p class="empty">Loading…</p>');
   let meta;
   try { meta = await api('/api/meta'); }
-  catch (err) { return h(root, `<div class="error">${esc(err.message)}</div>`); }
+  catch (err) { return h(root, `<div class="error" role="alert">${esc(err.message)}</div>`); }
 
   h(root, `
     <h2>Add yourself</h2>

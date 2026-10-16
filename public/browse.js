@@ -126,19 +126,24 @@ function filterBar() {
   const colors = [...new Map(roster.filter(r => r.color_name).map(r => [r.color_name, r.color_hex])).entries()];
   const waves = [...new Set(roster.filter(r => r.wave_num).map(r => r.wave_num))].sort();
   const transports = [...new Set(roster.filter(r => r.transport_label).map(r => r.transport_label))].sort();
+  // aria-pressed, not just the .on class: which filter is active was
+  // carried by background colour alone, so a screen reader user had no
+  // way to know what the list in front of them was already narrowed to.
   const btn = (type, value, label, style = '') =>
-    `<button class="mini${filter[type] === value ? ' on' : ''}" data-f="${type}" data-v="${esc(value)}" ${style}>${esc(label)}</button>`;
+    `<button class="mini${filter[type] === value ? ' on' : ''}" data-f="${type}" data-v="${esc(value)}"
+             aria-pressed="${filter[type] === value}" ${style}>${esc(label)}</button>`;
 
   return `
-    <div class="filters">
+    <div class="filters" role="group" aria-label="Filter by start colour">
       ${btn('color', null, 'All')}
       ${colors.map(([name, hex]) => btn('color', name, name, `style="border-color:${hex}"`)).join('')}
     </div>
-    <div class="filters">
+    <div class="filters" role="group" aria-label="Filter by wave or transport">
       ${waves.map(w => btn('wave', w, `Wave ${w}`)).join('')}
       ${transports.map(t => btn('transport', t, t.length > 18 ? t.slice(0, 17) + '…' : t)).join('')}
     </div>
-    <input class="search" id="q" placeholder="Search name or bib" value="${esc(filter.q)}">`;
+    <input class="search" id="q" aria-label="Search name or bib"
+           placeholder="Search name or bib" value="${esc(filter.q)}">`;
 }
 
 function visible() {
@@ -171,7 +176,7 @@ function render() {
     ${mine
       ? `<h2>You</h2>${card(mine, { mine: true })}`
       : `<h2>You</h2><div class="card"><div class="meta">You're signed in but not on the roster right now.</div>
-         <a href="me.html"><button class="ghost">Add me back</button></a></div>`}
+         <a href="me.html" class="btn">Add me back</a></div>`}
 
     <h2>Your people ${saved.length ? `(${saved.length})` : ''}</h2>
     ${saved.length
@@ -189,6 +194,17 @@ function render() {
       <p class="empty">${gaps.length} ${gaps.length === 1 ? 'person hasn\'t' : 'people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>` : ''}
 
     <button class="ghost" id="signout">Sign out of this device</button>`;
+
+  // #app is rewritten wholesale on every render, and a live region that
+  // gets replaced does not reliably announce -- so this one lives in the
+  // page shell and only ever has its text swapped.
+  const status = document.querySelector('#status');
+  if (status) {
+    const filtered = filter.q || filter.color || filter.wave || filter.transport;
+    status.textContent = filtered
+      ? `${others.length} of ${total} people match`
+      : `${total} people on the roster`;
+  }
 
   const link = document.querySelector('#edit-link');
   link.hidden = false;
@@ -250,6 +266,6 @@ app.addEventListener('input', e => {
     // An expired or revoked token should send you back to the gate, not
     // leave you staring at an error you cannot act on.
     if (err.status === 401 || err.status === 403) { store.clear(); return location.reload(); }
-    app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    app.innerHTML = `<div class="error" role="alert">${esc(err.message)}</div>`;
   }
 })();

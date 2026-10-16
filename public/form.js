@@ -24,8 +24,8 @@ export function entryFields(meta, cur = {}) {
     <label for="f-bib">Bib number <span class="hint">leave blank if you don't have it yet</span></label>
     <input id="f-bib" inputmode="numeric" maxlength="20" value="${esc(cur.bib_number || '')}">
 
-    <label>Start colour</label>
-    <div class="chips" id="f-colors">${chips}</div>
+    <label id="f-colors-label">Start colour</label>
+    <div class="chips" id="f-colors" role="group" aria-labelledby="f-colors-label">${chips}</div>
 
     <label for="f-wave">Wave</label>
     <select id="f-wave">${opts(meta.waves, 'wave_key', w => `Wave ${w.wave_num} — ${clock(w.start_time_local)}`, cur.wave_key)}</select>
@@ -33,13 +33,13 @@ export function entryFields(meta, cur = {}) {
     <label for="f-corral">Corral</label>
     <select id="f-corral">${opts(meta.corrals, 'corral_key', c => `Corral ${c.corral_letter}`, cur.corral_key)}</select>
 
-    <div class="derived" id="f-derived"></div>
+    <div class="derived" id="f-derived" role="status" aria-live="polite"></div>
 
     <label for="f-transport">Getting to the start</label>
     <select id="f-transport">${opts(meta.transports, 'transport_key', t => t.transport_label, cur.transport_key)}</select>
 
     <label for="f-departs">Departure time</label>
-    <select id="f-departs">${opts(meta.departure_slots, 'value', s => s.label, cur.depart_time_local)}</select>
+    <select id="f-departs" aria-describedby="f-departs-hint">${opts(meta.departure_slots, 'value', s => s.label, cur.depart_time_local)}</select>
     <div class="hint" id="f-departs-hint"></div>
 
     <label for="f-note">Note <span class="hint">optional — what to look for</span></label>
@@ -105,8 +105,9 @@ export function wireEntryFields(root, meta) {
 export function pinFields() {
   return `
     <label for="f-pin">Choose a PIN</label>
-    <input id="f-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">
-    <div class="hint">4–6 digits. Six is safer. Don't reuse a PIN you use anywhere else.</div>
+    <input id="f-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"
+           aria-describedby="f-pin-hint">
+    <div class="hint" id="f-pin-hint">4–6 digits. Six is safer. Don't reuse a PIN you use anywhere else.</div>
 
     <label for="f-pin2">Confirm PIN</label>
     <input id="f-pin2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">`;

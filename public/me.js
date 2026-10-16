@@ -21,7 +21,7 @@ const app = document.querySelector('#app');
     mine = r.runners.find(x => x.runner_key === r.me);
   } catch (err) {
     if (err.status === 401 || err.status === 403) { store.clear(); return location.reload(); }
-    return app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    return app.innerHTML = `<div class="error" role="alert">${esc(err.message)}</div>`;
   }
 
   // mine is undefined when someone took themselves off the roster. Their
@@ -58,6 +58,7 @@ const app = document.querySelector('#app');
       button.disabled = false;
       button.textContent = 'Save';
       const box = form.querySelector('.error') || Object.assign(document.createElement('div'), { className: 'error' });
+      box.setAttribute('role', 'alert');
       box.textContent = err.message;
       form.append(box);
     }

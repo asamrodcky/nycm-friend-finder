@@ -5,7 +5,7 @@
   --bg:     #f7f7f8;
   --card:   #ffffff;
   --text:   #16181d;
-  --muted:  #6b7280;
+  --muted:  #5f6673;
   --line:   #e4e4e7;
   --accent: #16181d;
   --warn:   #92400e;
@@ -13,10 +13,21 @@
   --radius: 10px;
   /* Field borders are deliberately much stronger than --line. --line is
      a card edge you should barely notice; this is a tap target you must
-     not miss. Both values hold roughly 3:1 against the card AND the page
-     background, which is the WCAG floor for a UI component boundary. */
-  --field-line: #96979d;
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
+     not miss.
+
+     Both values clear 3:1 against the card AND the page background --
+     WCAG 1.4.11, the floor for the boundary of a UI component. Measured,
+     not eyeballed: the first attempt at this was #96979d, which looks
+     fine and lands at 2.91:1 on the card and 2.72:1 on the page. Check
+     with a contrast calculator before changing either value, and check
+     against both surfaces, because the search box sits on the page while
+     every other field sits on a card. */
+  --field-line: #8b8d96;
+  /* #eab308 is only 1.9:1 on white -- too weak for the one graphic that
+     carries meaning on its own. Darkened for light mode only; on dark it
+     was already 9:1 and darkening would hurt. */
+  --star: #a16207;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6673' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +41,7 @@
     --warn:   #fcd34d;
     --warnbg: #2e2306;
     --field-line: #656975;
+    --star: #eab308;
     --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239096a1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
   }
 }
@@ -37,6 +49,7 @@
   --bg: #0d0e11; --card: #17191e; --text: #e8e9ec; --muted: #9096a1;
   --line: #2a2d35; --accent: #e8e9ec; --warn: #fcd34d; --warnbg: #2e2306;
   --field-line: #656975;
+  --star: #eab308;
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239096a1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
 }
 
@@ -58,6 +71,10 @@ header {
   gap: 12px; padding: 20px 0 14px;
 }
 header h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+/* "Edit my info" / "Back to roster" were 20px tall, under the 24px
+   minimum target size. Vertical padding on an inline element grows the
+   hit box without moving the baseline, so nothing shifts. */
+header a { padding: 5px 0; }
 header .sub { color: var(--muted); font-size: 13px; }
 
 h2 {
@@ -149,6 +166,12 @@ select:has(option[value=""]:checked) { color: var(--muted); }
    nothing. */
 input:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Keyboard focus has to be obvious on every control, not just the text
+   fields. Buttons, links and colour chips were relying on the browser
+   default, which varies and sits badly on a filled chip. The input rule
+   below outranks this one on specificity, so text fields keep their
+   inset ring whether focused by tap or by keyboard. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 button {
@@ -210,11 +233,30 @@ button.mini.on { background: var(--accent); color: var(--bg); border-color: var(
 svg.icon { width: 15px; height: 15px; flex: none; stroke: currentColor;
            fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
-.star { background: none; border: none; width: auto; margin: 0; padding: 4px;
+.star { background: none; border: none; width: auto; margin: 0; padding: 7px;
         cursor: pointer; color: var(--muted); line-height: 1; }
-.star.on { color: #eab308; }
+.star.on { color: var(--star); }
 .star svg { width: 19px; height: 19px; }
 
 a { color: var(--text); }
+
+/* "Add me back" used to be a <button> nested inside an <a>, which is
+   invalid and gives assistive tech two overlapping controls for one
+   action. It is now just the link, dressed as the ghost button it was
+   pretending to be. */
+a.btn {
+  display: block; width: 100%; box-sizing: border-box; text-align: center;
+  text-decoration: none; font: inherit; font-weight: 500; color: var(--text);
+  background: transparent; border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 11px; margin-top: 8px;
+}
+
+/* Announced, never shown. Carries the filtered count to a screen reader,
+   which otherwise gets no signal at all that tapping a filter changed
+   the list under it. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
 .center { text-align: center; }
 .stack > * + * { margin-top: 8px; }
