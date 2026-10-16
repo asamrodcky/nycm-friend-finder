@@ -11,6 +11,12 @@
   --warn:   #92400e;
   --warnbg: #fef3c7;
   --radius: 10px;
+  /* Field borders are deliberately much stronger than --line. --line is
+     a card edge you should barely notice; this is a tap target you must
+     not miss. Both values hold roughly 3:1 against the card AND the page
+     background, which is the WCAG floor for a UI component boundary. */
+  --field-line: #96979d;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,11 +29,15 @@
     --accent: #e8e9ec;
     --warn:   #fcd34d;
     --warnbg: #2e2306;
+    --field-line: #656975;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239096a1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
   }
 }
 :root[data-theme="dark"] {
   --bg: #0d0e11; --card: #17191e; --text: #e8e9ec; --muted: #9096a1;
   --line: #2a2d35; --accent: #e8e9ec; --warn: #fcd34d; --warnbg: #2e2306;
+  --field-line: #656975;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239096a1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; }
@@ -97,6 +107,48 @@ input, select, button {
   border: 1px solid var(--line); border-radius: 8px; padding: 10px 11px;
   width: 100%; -webkit-appearance: none; appearance: none;
 }
+
+/* A field has to look like a field. An input and the card around it were
+   both var(--card) with a var(--line) hairline between them -- a tap
+   target drawn as a near-invisible outline on an identical surface, which
+   is easy to scroll straight past.
+
+   Two things carry it. The fill is recessed: --bg is greyer than the card
+   in light mode and darker than it in dark mode, so a field reads as a
+   well either way. The border does the rest, and it has to, because the
+   search box sits directly on --bg where a --bg fill shows nothing at
+   all -- there the outline is the only thing making it a box.
+
+   background-COLOR, not the shorthand: the shorthand would wipe out the
+   chevron that select sets below, whichever order the rules land in. */
+input, select {
+  background-color: var(--bg);
+  border-color: var(--field-line);
+}
+
+/* appearance:none strips the native arrow, and nothing replaced it, so
+   every dropdown looked exactly like a text input -- no hint that tapping
+   opens twenty departure times. Five of the eight fields are selects. */
+select {
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 11px;
+  padding-right: 36px;
+}
+
+/* An untouched dropdown shows "- not sure yet -" in the same colour as a
+   real answer, so a form with nothing in it looked as complete as a form
+   with everything. Muting the unanswered ones shows what is left without
+   scolding: blank is a legitimate answer here and stays one. */
+select:has(option[value=""]:checked) { color: var(--muted); }
+::placeholder { color: var(--muted); opacity: 1; }
+
+/* Departure time is disabled until a vehicle is picked. It looked
+   identical to an enabled field, so the only clue was that tapping did
+   nothing. */
+input:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
+
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 button {
