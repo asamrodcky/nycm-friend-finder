@@ -1,0 +1,32 @@
+# Cloudflare Pages serves static assets with `max-age=14400` by default,
+# so a browser that loaded app.js once would not ask for it again for
+# four hours -- which is why a deploy did not show up until the cache was
+# cleared. The HTML was already `max-age=0`, which is the trap: the page
+# was new, the code behind it was not.
+#
+# The filenames here are not content-hashed (there is no build step, the
+# modules are served as written), so the only safe cache is a
+# revalidating one. `no-cache` does not mean "do not store" -- the
+# browser keeps the file and asks the edge whether it changed, and the
+# answer is a 304 with no body. The whole frontend is ~30 KB, and
+# Cloudflare answers the revalidation from its own edge, so this costs a
+# round trip, not a download.
+#
+# If a build step with hashed filenames ever lands, flip the hashed
+# assets to `max-age=31536000, immutable` and leave the HTML revalidating.
+#
+# Scoped by extension rather than `/*` on purpose: a blanket rule also
+# matches the Functions routes, and `_headers` APPENDS to what a Function
+# already sent, so /api/* came back `no-cache, no-store`. The API's own
+# `no-store` in lib/http.ts is the stronger and correct answer for a
+# private roster, and these rules leave it alone.
+/
+  Cache-Control: no-cache
+/*.html
+  Cache-Control: no-cache
+/*.js
+  Cache-Control: no-cache
+/*.css
+  Cache-Control: no-cache
+/version.json
+  Cache-Control: no-cache
