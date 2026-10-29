@@ -49,14 +49,26 @@ export function clock(hhmm) {
 
 export const dash = v => (v === null || v === undefined || v === '' ? '—' : v);
 
-/** "Orange · Wave 1 · Corral C · 9:10 AM", skipping what is unknown. */
-export function startLine(r) {
-  const parts = [];
-  if (r.color_name)    parts.push(r.color_name);
-  if (r.wave_num)      parts.push(`Wave ${r.wave_num}`);
-  if (r.corral_letter) parts.push(`Corral ${r.corral_letter}`);
-  if (r.start_time_local) parts.push(clock(r.start_time_local));
-  return parts.length ? parts.join(' · ') : 'start info not set yet';
+/**
+ * The start assignment as three discrete facts: colour, wave, corral.
+ *
+ * This used to be one dot-separated sentence -- "Orange · Wave 1 · Corral
+ * C · 9:10 AM" -- which is the hardest possible shape to read at a
+ * glance. These are the exact values you match on, so the card renders
+ * each as its own badge: the eye pattern-matches three small blocks down
+ * a column of cards without reading any of them as words.
+ *
+ * All three slots come back whether they are known or not, so the badges
+ * line up vertically across cards and a gap is a gap in a fixed position
+ * rather than a row of different length. `key` names the slot for the
+ * unknown case; `label` is null when nobody has filled it in.
+ */
+export function startFacts(r) {
+  return [
+    { key: 'Colour', label: r.color_name || null, hex: r.color_hex || null },
+    { key: 'Wave',   label: r.wave_num ? `Wave ${r.wave_num}` : null },
+    { key: 'Corral', label: r.corral_letter ? `Corral ${r.corral_letter}` : null },
+  ];
 }
 
 // ---------- icons ----------

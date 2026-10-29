@@ -27,6 +27,18 @@
      carries meaning on its own. Darkened for light mode only; on dark it
      was already 9:1 and darkening would hurt. */
   --star: #a16207;
+  /* Badge surface. Deliberately between --line and --field-line in
+     strength: more visible than a card edge, less assertive than a
+     field. The ladder, measured against the card -- card edge 1.27:1,
+     badge 1.69:1, field 3.31:1 -- has to stay in that order, because a
+     field is a tap target you must not miss and a badge is not.
+     --text on this fill is 14.7:1, --muted 4.8:1. */
+  --pill-bg:   #e8eaee;
+  --pill-line: #c3c7d0;
+  /* The overlap tag's edge. Between the two above at 2.27:1 against the
+     card, and within 0.02 of its dark-mode twin, so the tag carries the
+     same weight in both themes. */
+  --tag-line:  #abacae;
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6673' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
 }
 
@@ -42,6 +54,9 @@
     --warnbg: #2e2306;
     --field-line: #656975;
     --star: #eab308;
+    --pill-bg:   #262a32;
+    --pill-line: #3e434e;
+    --tag-line:  #525358;
     --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239096a1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
   }
 }
@@ -50,6 +65,9 @@
   --line: #2a2d35; --accent: #e8e9ec; --warn: #fcd34d; --warnbg: #2e2306;
   --field-line: #656975;
   --star: #eab308;
+  --pill-bg:   #262a32;
+  --pill-line: #3e434e;
+  --tag-line:  #525358;
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239096a1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
 }
 
@@ -103,14 +121,87 @@ h2 {
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 14%, transparent);
 }
 
-.badge {
-  font-size: 11px; padding: 2px 7px; border-radius: 20px;
-  background: var(--warnbg); color: var(--warn); white-space: nowrap;
+/* ---------- badges ---------- */
+/* The start assignment used to be one dot-separated line of --muted
+   text: "Orange · Wave 1 · Corral C · 9:10 AM". Two things were wrong
+   with it. It was muted, and it is the most important content on the
+   card -- the whole point of the roster. And a sentence has to be read
+   left to right, where the facts in it are the discrete values you
+   match on, so there was nothing to pattern-match against.
+
+   Badges fix both: full-contrast text, and three fixed-position blocks
+   the eye compares down a column of cards without reading them.
+
+   One geometry for every badge on the card -- info, overlap, needs-info
+   -- so the card reads as one system and only colour separates their
+   jobs. */
+.pill, .tag, .badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; line-height: 1.4;
+  padding: 2px 8px; border-radius: 20px;
+  border: 1px solid transparent; white-space: nowrap;
 }
-.tag {
-  font-size: 11px; padding: 2px 7px; border-radius: 20px;
-  border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+
+.pill { background: var(--pill-bg); border-color: var(--pill-line); color: var(--text); }
+/* The transport icon is the one graphic on the card people actually
+   read, so it keeps its full size inside the badge. A heavier stroke
+   than the 1.7 elsewhere: at 15px the ferry's mast and the bus's
+   wheels disappear at the lighter weight. */
+.pill svg.icon { width: 15px; height: 15px; stroke-width: 1.95; }
+
+/* Filled with the start colour, matching the form's colour chips, so
+   "Orange" looks the same wherever it appears. color-mix darkens it
+   ~15%: white on the seeded orange is 3.56:1, which fails AA. Darkened
+   it is 4.73:1, with blue at 6.64 and pink at 6.01 -- the tightest of
+   the three is the one to re-measure if a seeded hex ever changes. The
+   plain background line above it is the fallback. */
+.pill.solid {
+  background: var(--pill);
+  background: color-mix(in srgb, var(--pill) 85%, #000);
+  border-color: transparent; color: #fff;
 }
+
+/* An empty slot, holding its position in the row. Dashed rather than
+   filled, matching .derived, which is the same "nothing here yet"
+   idea. Muted and never red: blank is a legitimate answer (§19). */
+.pill.open {
+  background: transparent; border-style: dashed;
+  border-color: var(--pill-line); color: var(--muted); font-weight: 500;
+}
+
+.tag { background: var(--pill-bg); border-color: var(--pill-line); color: var(--text); }
+/* Why this person is being suggested. Outlined where the info badges
+   are filled, because it is a different kind of fact -- a relationship,
+   not an attribute -- and the eye should separate the two rows without
+   being told.
+
+   The edge is deliberately NOT --accent, which is near-white in dark
+   mode and made the tag the loudest thing on the card, beating the
+   person's name. The section heading already says these people overlap
+   with you; the tag only has to say how. */
+.tag.match { background: transparent; border-color: var(--tag-line); }
+.badge { background: var(--warnbg); color: var(--warn); }
+
+/* A badge row. Wraps rather than squeezing. The worst case is the
+   longest colour plus a two-digit start time -- Orange / Wave 3 /
+   Corral C / starts 10:20 AM -- which measures 303px against the 313px
+   a card has inside it on a 375px phone. Below about 340px the time
+   wraps to its own right-aligned line, which is the intended
+   degradation. Re-measure if the font size or padding here changes. */
+.facts {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 6px; margin-top: 7px;
+}
+
+/* Right-aligned, so the times make a column you can scan for "who
+   starts near me" instead of hunting for them mid-sentence. The key
+   word is load-bearing: a card shows a start time and a departure time,
+   and without it the two are told apart only by which row they are in. */
+.when {
+  margin-left: auto; font-size: 13px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.when-k { font-weight: 500; font-size: 11px; color: var(--muted); }
 
 /* ---------- controls ---------- */
 /* Label carries the field name; the hint is visibly secondary to it.

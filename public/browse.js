@@ -15,7 +15,7 @@
 // containing you, so "Same corral" was heading a list of corrals you
 // were not in. Those views still exist for analysis in sql/.
 
-import { api, store, KEY, esc, icon, clock, startLine, transportIcon, watchForUpdates } from './app.js';
+import { api, store, KEY, esc, icon, clock, startFacts, transportIcon, watchForUpdates } from './app.js';
 import { ensureAccess } from './gate.js';
 
 const app = document.querySelector('#app');
@@ -78,28 +78,72 @@ function overlap(mine, them) {
 
 // ---------- cards ----------
 
+// A badge. `hex` fills it with the start colour; without one it is the
+// neutral pill. The fill is darkened by the same ~15% as the form's
+// colour chips, which is what gets white text over the seeded orange to
+// clear AA -- see the note on .pill.solid in app.css.
+const pill = (label, hex) => hex
+  ? `<span class="pill solid" style="--pill:${hex}">${esc(label)}</span>`
+  : `<span class="pill">${esc(label)}</span>`;
+
+// An unanswered slot. Dashed and muted, never red: four of nineteen real
+// entries genuinely do not know their corral yet, and the form tells
+// everyone "blank is fine" (§19). It holds the badge's position so the
+// row still lines up with the cards above and below it.
+//
+// The em dash is hidden from assistive tech, which would read it as
+// nothing or as "dash"; "Wave not set" is spoken instead.
+const openPill = key =>
+  `<span class="pill open">${esc(key)} <span aria-hidden="true">—</span><span class="sr-only">not set</span></span>`;
+
+// A time, right-aligned so the times form a scannable column down the
+// page. The key word is what keeps row 2's start time from reading as
+// row 3's departure time -- and it is the only thing a screen reader
+// gets, which otherwise hears two bare clock times per card.
+const when = (key, hhmm) =>
+  `<span class="when"><span class="when-k">${key}</span> ${clock(hhmm)}</span>`;
+
 function card(r, { mine = false, tag = null } = {}) {
   const isSaved = savedKeys().has(r.runner_key);
-  const dot = r.color_hex
-    ? `<span class="dot" style="background:${r.color_hex}"></span>`
-    : '<span class="dot" style="background:var(--line)"></span>';
+  const facts = startFacts(r);
+  const anyStart = facts.some(f => f.label);
+
+  // is_complete is bib + colour + wave + corral. The start facts now
+  // show their own gaps as dashed slots, so a card with all three slots
+  // filled and a "needs info" badge looks like it is complaining about
+  // nothing -- the only thing left it can mean is the bib. Say which.
+  const needs = facts.every(f => f.label) ? 'needs bib' : 'needs info';
   return `
     <div class="card${mine ? ' me' : ''}">
       <div class="row">
-        ${dot}
+        <span class="dot" style="background:${r.color_hex || 'var(--line)'}"></span>
         <div class="grow">
           <span class="name">${esc(r.display_name)}</span>
           ${mine ? ' <span class="tag">you</span>' : ''}
           ${r.bib_number ? ` <span class="bib">#${esc(r.bib_number)}</span>` : ''}
         </div>
-        ${tag ? `<span class="tag">${esc(tag)}</span>` : ''}
-        ${r.is_complete || tag ? '' : '<span class="badge">needs info</span>'}
+        ${tag ? `<span class="tag match">${esc(tag)}</span>` : ''}
+        ${r.is_complete || tag ? '' : `<span class="badge">${needs}</span>`}
         ${mine ? '' : `<button class="star${isSaved ? ' on' : ''}" data-save="${r.runner_key}"
              aria-label="${isSaved ? `Remove ${esc(r.display_name)} from my people` : `Save ${esc(r.display_name)}`}"
              aria-pressed="${isSaved}">${icon('star', { filled: isSaved })}</button>`}
       </div>
-      <div class="row meta">${esc(startLine(r))}</div>
-      ${r.transport_label ? `<div class="row meta">${transportIcon(r)}<span>${esc(r.transport_label)}${r.depart_time_local ? ' · ' + clock(r.depart_time_local) : ''}</span></div>` : ''}
+
+      <div class="facts">
+        ${anyStart
+          // Joined on a space, not nothing. Flex ignores whitespace between
+          // items so the layout is unchanged, but it stops assistive tech
+          // that flattens adjacent inline text from reading "OrangeWave 2".
+          ? facts.map(f => (f.label ? pill(f.label, f.hex) : openPill(f.key))).join(' ') +
+            (r.start_time_local ? ' ' + when('starts', r.start_time_local) : '')
+          : openPill('Start info')}
+      </div>
+
+      ${r.transport_label ? `<div class="facts">
+        <span class="pill">${transportIcon(r)}${esc(r.transport_label)}</span>
+        ${r.depart_time_local ? when('leaves', r.depart_time_local) : ''}
+      </div>` : ''}
+
       ${r.meetup_note ? `<div class="note">“${esc(r.meetup_note)}”</div>` : ''}
     </div>`;
 }
