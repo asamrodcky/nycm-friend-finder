@@ -223,6 +223,9 @@ Snapshot **before** deleting anything:
 
 ```bash
 npm run db:snapshot                               # -> snapshots/nycm2026-final.sql
+# or, if the repo might ever be public or shared:
+npm run db:snapshot:anon                          # -> snapshots/nycm2026-anon.sql
+
 git add snapshots/ && git commit -m "Final race-day snapshot"
 
 npx wrangler pages project delete nycm-friendfinder
