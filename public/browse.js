@@ -119,6 +119,58 @@ function overlap(mine, them) {
   return rung === -1 ? null : { rank: rung, label: LADDER[rung][0] };
 }
 
+// How many people "near you" is worth having. Walk the ladder from the
+// top and stop once you have this many -- so a crowded wave shows only
+// its strongest matches, and a lonely one keeps descending until it
+// finds somebody.
+//
+// The number is load-bearing and was measured, not guessed. Seeding 200
+// production-shaped runners locally put the median list at 44 people
+// and one of them at 7,268px, about ten phone screens before you reach
+// "Everyone". That is a second roster, not a shortlist.
+//
+// The obvious version of this -- "fall back to the weak rungs only if
+// you have NO strong ones" -- is worse than doing nothing. On the real
+// 22-person roster most people do have one strong match, so the weak
+// rungs get suppressed and the median person drops from 5 matches to 2.
+// It would have made the live app worse on race day to fix a problem
+// that only exists at 200. Counting to 6 instead of to 1 is a no-op at
+// 22 and takes 200 from a median of 44 down to 13.
+const NEAR_TARGET = 6;
+
+// ...and a ceiling, because the rung that crosses the target is taken
+// whole. One seeded runner had no strong matches and 36 people in their
+// wave; cutting a category off in the middle is arbitrary, so take it
+// all and cap what gets drawn. Anyone past the cap is still one filter
+// away in Everyone.
+const NEAR_MAX = 20;
+
+/**
+ * The people worth showing you, strongest first.
+ *
+ * Returns { shown, hidden }. Anyone already starred is excluded --
+ * suggesting someone you have already chosen is suggesting what you
+ * already did.
+ */
+function peopleNearMe(mine, excluded) {
+  if (!mine) return { shown: [], hidden: 0 };
+
+  const buckets = LADDER.map(() => []);
+  for (const r of roster) {
+    if (r.runner_key === me || excluded.has(r.runner_key)) continue;
+    const rung = LADDER.findIndex(([, test]) => test(mine, r));
+    if (rung >= 0) buckets[rung].push({ r, hit: { rank: rung, label: LADDER[rung][0] } });
+  }
+
+  const picked = [];
+  for (const bucket of buckets) {
+    if (picked.length >= NEAR_TARGET) break;
+    bucket.sort((a, b) => a.r.display_name.localeCompare(b.r.display_name));
+    picked.push(...bucket);
+  }
+  return { shown: picked.slice(0, NEAR_MAX), hidden: Math.max(0, picked.length - NEAR_MAX) };
+}
+
 /**
  * Why the "people near you" list is empty, which is now a normal state
  * rather than a sign of a small roster -- the ladder above rejects the
@@ -262,13 +314,7 @@ function render() {
   const mine = roster.find(r => r.runner_key === me);
   const already = savedKeys();
 
-  // Anyone you have already saved is in "your people" -- showing them
-  // again as a suggestion would be suggesting what you already did.
-  const near = roster
-    .filter(r => r.runner_key !== me && !already.has(r.runner_key))
-    .map(r => ({ r, hit: overlap(mine, r) }))
-    .filter(x => x.hit)
-    .sort((a, b) => a.hit.rank - b.hit.rank || a.r.display_name.localeCompare(b.r.display_name));
+  const near = peopleNearMe(mine, already);
 
   const others = visible().filter(r => r.runner_key !== me);
   const total = roster.length - (mine ? 1 : 0);
@@ -284,9 +330,10 @@ function render() {
       ? saved.map(s => savedCard(s, mine)).join('')
       : `<p class="empty">Nobody yet. Tap a star to add someone you want to find on race morning.</p>`}
 
-    ${mine ? `<h2>People near you ${near.length ? `(${near.length})` : ''}</h2>
-      ${near.length
-        ? near.map(x => card(x.r, { tag: x.hit.label })).join('')
+    ${mine ? `<h2>People near you ${near.shown.length ? `(${near.shown.length})` : ''}</h2>
+      ${near.shown.length
+        ? near.shown.map(x => card(x.r, { tag: x.hit.label })).join('') +
+          (near.hidden ? `<p class="empty">${near.hidden} more share your wave — filter Everyone below to see them.</p>` : '')
         : `<p class="empty">${esc(whyNobodyNear(mine))}</p>`}` : ''}
 
     <h2>Everyone (${others.length}${others.length !== total ? ` of ${total}` : ''})</h2>
