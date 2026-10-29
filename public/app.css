@@ -84,15 +84,55 @@ body {
 
 main { max-width: 620px; margin: 0 auto; }
 
-header {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 12px; padding: 20px 0 14px;
+/* The title used to sit on one flex row with the "Edit my info" link
+   beside it. At 17px that fitted; at display size it does not -- the
+   wordmark alone wants ~275px and a 390px phone only has 358px of
+   content width. So the header is two stacked rows now: the brand on
+   its own line, then the date and the link sharing the line below. */
+header { padding: 20px 0 14px; }
+
+/* The font-size lives here, not on the h1, so the runner mark can be
+   sized in em and the whole block grows and shrinks as one. Sizing the
+   mark in px instead let the wordmark outgrow it on a wide screen and
+   crowd it on a narrow one. */
+.brand {
+  display: flex; align-items: center; gap: 0.34em;
+  font-size: clamp(21px, 0.2rem + 5.7vw, 26px);
 }
-header h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+
+/* Futura is the display face on macOS and iOS, which is what this gets
+   opened on; Avenir Next and Century Gothic are the same geometric
+   shape elsewhere, and system-ui is the backstop on Android. Only the
+   h1 uses it -- body copy stays on the system stack, where it belongs.
+
+   The size is clamped (on .brand, above) rather than fixed, because the
+   wordmark is the widest unbreakable thing on the page: at 320px there
+   is only room for about 22px of it. The middle term keeps a `rem` in
+   it on purpose -- a size in `vw` alone does not grow when someone
+   raises their default font size, and the term that does respond is the
+   rem one. */
+header h1 {
+  font-size: inherit;
+  font-family: Futura, "Avenir Next", "Century Gothic", system-ui, sans-serif;
+  font-weight: 600; letter-spacing: -0.005em; line-height: 1.05; margin: 0;
+}
+
+/* Two runners mid-stride, drawn here rather than borrowed, same as every
+   other icon in this app (see the PATHS map in app.js). The companion is
+   --muted rather than a transparency so it keeps its measured value in
+   both themes instead of multiplying against whatever is behind it.
+   Decorative, so it is aria-hidden and the h1 still carries the name. */
+.mark { flex: none; width: 1.95em; height: 1.3em; fill: none;
+        stroke-linecap: round; stroke-linejoin: round; }
+.mark .back  { stroke: var(--muted); }
+.mark .front { stroke: currentColor; }
+
+.subline { display: flex; align-items: baseline; justify-content: space-between;
+           gap: 12px; margin-top: 5px; }
 /* "Edit my info" / "Back to roster" were 20px tall, under the 24px
    minimum target size. Vertical padding on an inline element grows the
    hit box without moving the baseline, so nothing shifts. */
-header a { padding: 5px 0; }
+header a { padding: 5px 0; flex: none; white-space: nowrap; }
 header .sub { color: var(--muted); font-size: 13px; }
 
 h2 {
