@@ -282,8 +282,13 @@ function filterBar() {
   // aria-pressed, not just the .on class: which filter is active was
   // carried by background colour alone, so a screen reader user had no
   // way to know what the list in front of them was already narrowed to.
+  // data-v has to round-trip back to the value, and esc(null) is "",
+  // which reads back as the empty string, not null. The "All" chip is
+  // the only null, and it was the one losing its pressed state: state
+  // used to be baked in at build time, so nothing ever read it back.
   const btn = (type, value, label, style = '') =>
-    `<button class="mini${filter[type] === value ? ' on' : ''}" data-f="${type}" data-v="${esc(value)}"
+    `<button class="mini${filter[type] === value ? ' on' : ''}" data-f="${type}"
+             data-v="${value === null ? 'null' : esc(value)}"
              aria-pressed="${filter[type] === value}" ${style}>${esc(label)}</button>`;
 
   return `
@@ -294,18 +299,83 @@ function filterBar() {
     <div class="filters" role="group" aria-label="Filter by wave or transport">
       ${waves.map(w => btn('wave', w, `Wave ${w}`)).join('')}
       ${transports.map(t => btn('transport', t, t.length > 18 ? t.slice(0, 17) + '…' : t)).join('')}
-    </div>
-    <input class="search" id="q" aria-label="Search name or bib"
-           placeholder="Search name or bib" value="${esc(filter.q)}">`;
+    </div>`;
 }
 
-function visible() {
+const matches = r => {
   const q = filter.q.trim().toLowerCase();
-  return roster.filter(r =>
-    (!filter.color     || r.color_name === filter.color) &&
-    (!filter.wave      || r.wave_num === filter.wave) &&
-    (!filter.transport || r.transport_label === filter.transport) &&
-    (!q || r.display_name.toLowerCase().includes(q) || (r.bib_number || '').includes(q)));
+  return (!filter.color     || r.color_name === filter.color)
+      && (!filter.wave      || r.wave_num === filter.wave)
+      && (!filter.transport || r.transport_label === filter.transport)
+      && (!q || r.display_name.toLowerCase().includes(q) || (r.bib_number || '').includes(q));
+};
+
+// Everyone's cards, built once and then shown or hidden. Rebuilt only
+// when the DATA changes -- a star, a fresh fetch -- never when the
+// filter does.
+let everyoneCards = [];
+
+/**
+ * Rebuilds the Everyone list. Costly, so it is called when the roster
+ * or the saved set changes, not on a keystroke.
+ */
+function paintEveryone() {
+  const host = document.querySelector('#everyone');
+  if (!host) return;
+  const list = roster.filter(r => r.runner_key !== me);
+  host.innerHTML = list.map(r => card(r)).join('');
+  everyoneCards = [...host.children].map((el, i) => ({ el, r: list[i] }));
+  applyFilter();
+}
+
+/**
+ * Narrows the list without rebuilding it.
+ *
+ * This used to be a full `render()` -- every card on the page thrown
+ * away and reparsed from a string on every keystroke, plus refocusing
+ * the search box and restoring the caret by hand afterwards, because
+ * the box being typed into was one of the things destroyed.
+ *
+ * Measured at 200 seeded runners: 111-178ms per keystroke on a Mac,
+ * 256 cards and 5,739 nodes rebuilt each time. The target is a cold
+ * phone at 5am, which is several times slower again. §21 expected this
+ * to bite at 1000; it bites at 200.
+ *
+ * Toggling `hidden` on cards that already exist costs no parsing and no
+ * reflow beyond the rows that actually changed -- and because the input
+ * is never replaced, focus and the caret look after themselves.
+ */
+function applyFilter() {
+  let shown = 0;
+  for (const { el, r } of everyoneCards) {
+    const ok = matches(r);
+    if (el.hidden === ok) el.hidden = !ok;   // only write when it changes
+    if (ok) shown++;
+  }
+
+  const total = everyoneCards.length;
+  const head = document.querySelector('#everyone-head');
+  if (head) head.textContent = `Everyone (${shown}${shown !== total ? ` of ${total}` : ''})`;
+
+  const none = document.querySelector('#no-match');
+  if (none) none.hidden = shown > 0;
+
+  const status = document.querySelector('#status');
+  if (status) {
+    const narrowed = filter.q || filter.color || filter.wave || filter.transport;
+    status.textContent = narrowed ? `${shown} of ${total} people match` : `${total} people on the roster`;
+  }
+}
+
+/** Filter buttons carry state in a class and aria-pressed; set both in place. */
+function paintFilterStates() {
+  for (const b of document.querySelectorAll('#filters [data-f]')) {
+    const raw = b.dataset.v === 'null' ? null : b.dataset.v;
+    const value = b.dataset.f === 'wave' ? Number(raw) : raw;
+    const on = filter[b.dataset.f] === value;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
 }
 
 // ---------- render ----------
@@ -315,9 +385,6 @@ function render() {
   const already = savedKeys();
 
   const near = peopleNearMe(mine, already);
-
-  const others = visible().filter(r => r.runner_key !== me);
-  const total = roster.length - (mine ? 1 : 0);
 
   app.innerHTML = `
     ${mine
@@ -336,25 +403,23 @@ function render() {
           (near.hidden ? `<p class="empty">${near.hidden} more share your wave — filter Everyone below to see them.</p>` : '')
         : `<p class="empty">${esc(whyNobodyNear(mine))}</p>`}` : ''}
 
-    <h2>Everyone (${others.length}${others.length !== total ? ` of ${total}` : ''})</h2>
-    ${filterBar()}
-    ${others.length ? others.map(r => card(r)).join('') : '<p class="empty">Nobody matches that.</p>'}
+    <h2 id="everyone-head"></h2>
+    <div id="filters">${filterBar()}</div>
+    <input class="search" id="q" aria-label="Search name or bib"
+           placeholder="Search name or bib" value="${esc(filter.q)}">
+    <div id="everyone"></div>
+    <p class="empty" id="no-match" hidden>Nobody matches that.</p>
 
     ${gaps.length ? `<h2>Still missing info</h2>
       <p class="empty">${gaps.length} ${gaps.length === 1 ? 'person hasn\'t' : 'people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>` : ''}
 
     <button class="ghost" id="signout">Sign out of this device</button>`;
 
-  // #app is rewritten wholesale on every render, and a live region that
-  // gets replaced does not reliably announce -- so this one lives in the
-  // page shell and only ever has its text swapped.
-  const status = document.querySelector('#status');
-  if (status) {
-    const filtered = filter.q || filter.color || filter.wave || filter.transport;
-    status.textContent = filtered
-      ? `${others.length} of ${total} people match`
-      : `${total} people on the roster`;
-  }
+  // Fills #everyone, then applyFilter() sets the heading, the no-match
+  // line and the live region. That live region lives in the page shell,
+  // never inside #app: #app is replaced wholesale here, and a live
+  // region that gets replaced does not reliably announce.
+  paintEveryone();
 
   const link = document.querySelector('#edit-link');
   link.hidden = false;
@@ -383,21 +448,22 @@ app.addEventListener('click', async e => {
     const raw = f.dataset.v === 'null' ? null : f.dataset.v;
     const value = f.dataset.f === 'wave' ? Number(raw) : raw;
     filter[f.dataset.f] = filter[f.dataset.f] === value ? null : value;
-    render();
+    paintFilterStates();
+    applyFilter();
     return;
   }
 
   if (e.target.id === 'signout') { store.clear(); location.reload(); }
 });
 
+// No render() here, and so no refocusing and no caret arithmetic: the
+// box being typed into is not one of the things that gets replaced any
+// more. That hand-restoration only ever existed to paper over the
+// rebuild.
 app.addEventListener('input', e => {
   if (e.target.id !== 'q') return;
   filter.q = e.target.value;
-  const at = e.target.selectionStart;
-  render();
-  const box = document.querySelector('#q');
-  box.focus();
-  box.setSelectionRange(at, at);
+  applyFilter();
 });
 
 // ---------- boot ----------

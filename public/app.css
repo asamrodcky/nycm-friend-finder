@@ -342,6 +342,12 @@ a.btn {
   border-radius: 8px; padding: 10px 11px; margin-top: 8px;
 }
 
+/* The roster now filters by toggling [hidden] on cards that already
+   exist rather than rebuilding the list, so this has to win. The UA
+   sheet already says display:none, but any later display rule on .card
+   would silently outrank it and the filter would stop hiding anything. */
+[hidden] { display: none !important; }
+
 /* Announced, never shown. Carries the filtered count to a screen reader,
    which otherwise gets no signal at all that tapping a filter changed
    the list under it. */
