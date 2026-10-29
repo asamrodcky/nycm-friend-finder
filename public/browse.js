@@ -310,6 +310,28 @@ const matches = r => {
       && (!q || r.display_name.toLowerCase().includes(q) || (r.bib_number || '').includes(q));
 };
 
+// How much of the roster to draw before asking. Measured at 200 seeded
+// runners on a 375px phone: the unfiltered list is 25,916px, about
+// FORTY screens of scrolling. Twenty-five is roughly four and a half,
+// which is enough to browse and short enough to reach the end of.
+//
+// Only applies to undirected browsing. The moment a filter or a search
+// is on, the whole matching set is drawn -- you have already said what
+// you are looking for, and hiding part of the answer to a question you
+// asked is a different and worse thing than trimming a list you were
+// idly scrolling.
+//
+// Deliberately NOT keyed to viewport. The layout is max-width 620px and
+// the badge row fits without wrapping at 313px, so a card is the same
+// height on a phone and a laptop -- measured identical at 343, 620 and
+// 768px. A viewport-dependent cap would add a variable that changes
+// nothing visible.
+//
+// At today's roster this never triggers: 21 others is under the cap, so
+// no button appears and nothing changes.
+const ROSTER_CAP = 25;
+let showAll = false;
+
 // Everyone's cards, built once and then shown or hidden. Rebuilt only
 // when the DATA changes -- a star, a fresh fetch -- never when the
 // filter does.
@@ -346,24 +368,45 @@ function paintEveryone() {
  * is never replaced, focus and the caret look after themselves.
  */
 function applyFilter() {
-  let shown = 0;
+  const narrowed = !!(filter.q || filter.color || filter.wave || filter.transport);
+  const cap = narrowed || showAll ? Infinity : ROSTER_CAP;
+
+  // matched is how many pass the filter; drawn is how many are on screen.
+  // Keeping them apart is what stops the heading reading "Everyone (25 of
+  // 199)" when nothing is filtered at all, which would look like the app
+  // had hidden something you asked for.
+  let matched = 0, drawn = 0;
   for (const { el, r } of everyoneCards) {
     const ok = matches(r);
-    if (el.hidden === ok) el.hidden = !ok;   // only write when it changes
-    if (ok) shown++;
+    if (ok) matched++;
+    const show = ok && matched <= cap;
+    if (el.hidden === show) el.hidden = !show;   // only write when it changes
+    if (show) drawn++;
   }
 
   const total = everyoneCards.length;
   const head = document.querySelector('#everyone-head');
-  if (head) head.textContent = `Everyone (${shown}${shown !== total ? ` of ${total}` : ''})`;
+  if (head) head.textContent = `Everyone (${matched}${matched !== total ? ` of ${total}` : ''})`;
 
   const none = document.querySelector('#no-match');
-  if (none) none.hidden = shown > 0;
+  if (none) none.hidden = matched > 0;
+
+  // A toggle rather than a button that vanishes: expanding must not
+  // destroy the element that has focus, and collapsing gives a way back
+  // without reloading.
+  const more = document.querySelector('#show-all');
+  if (more) {
+    const hidden = matched - drawn;
+    more.hidden = !(hidden > 0 || showAll);
+    more.textContent = hidden > 0 ? `Show all ${matched}` : 'Show fewer';
+    more.setAttribute('aria-expanded', String(showAll));
+  }
 
   const status = document.querySelector('#status');
   if (status) {
-    const narrowed = filter.q || filter.color || filter.wave || filter.transport;
-    status.textContent = narrowed ? `${shown} of ${total} people match` : `${total} people on the roster`;
+    status.textContent = narrowed ? `${matched} of ${total} people match`
+      : drawn < matched ? `Showing ${drawn} of ${total} people`
+      : `${total} people on the roster`;
   }
 }
 
@@ -409,6 +452,7 @@ function render() {
            placeholder="Search name or bib" value="${esc(filter.q)}">
     <div id="everyone"></div>
     <p class="empty" id="no-match" hidden>Nobody matches that.</p>
+    <button class="ghost" id="show-all" hidden aria-controls="everyone"></button>
 
     ${gaps.length ? `<h2>Still missing info</h2>
       <p class="empty">${gaps.length} ${gaps.length === 1 ? 'person hasn\'t' : 'people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>` : ''}
@@ -452,6 +496,8 @@ app.addEventListener('click', async e => {
     applyFilter();
     return;
   }
+
+  if (e.target.id === 'show-all') { showAll = !showAll; applyFilter(); return; }
 
   if (e.target.id === 'signout') { store.clear(); location.reload(); }
 });
