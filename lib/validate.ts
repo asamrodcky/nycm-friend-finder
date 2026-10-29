@@ -13,6 +13,7 @@ export interface RunnerInput {
   transport_key: number | null;
   depart_time_local: string | null;
   meetup_note: string | null;
+  instagram: string | null;
 }
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -25,6 +26,58 @@ function nullableText(v: unknown, max: number, field: string, errors: string[]):
   if (!t) return null;
   if (t.length > max) { errors.push(`${field} is too long (max ${max})`); return null; }
   return t;
+}
+
+/**
+ * A bib, canonicalised so that two spellings of one number cannot both
+ * be claimed.
+ *
+ * The live-bib unique index compares raw strings, so "04521" and "4521"
+ * were two different bibs to the database and one bib to a human --
+ * verified: the second one was accepted with a 201. Leading zeros are
+ * stripped so the index sees what a person sees.
+ *
+ * Digits only, too. "not-a-bib" was also accepted. NYRR bibs are plain
+ * numbers; all 29 in production are four or five digits with no leading
+ * zero, so nothing existing is invalidated by requiring it.
+ */
+function bibNumber(v: unknown, errors: string[]): string | null {
+  const t = nullableText(v, 20, 'bib number', errors);
+  if (t === null) return null;
+  if (!/^\d+$/.test(t)) {
+    errors.push('bib number should be digits only, like 4521');
+    return null;
+  }
+  const canon = t.replace(/^0+/, '');
+  if (!canon || canon.length > 6) {
+    errors.push('that does not look like a race bib number');
+    return null;
+  }
+  return canon;
+}
+
+/**
+ * An Instagram handle, stored bare.
+ *
+ * People paste whatever is in front of them, so a leading @ and a full
+ * profile URL both normalise to the handle. Instagram allows letters,
+ * numbers, periods and underscores, up to 30.
+ */
+function instagramHandle(v: unknown, errors: string[]): string | null {
+  const t = nullableText(v, 120, 'Instagram handle', errors);
+  if (t === null) return null;
+  const bare = t
+    .replace(/^https?:\/\//i, '')
+    .replace(/^(www\.)?instagram\.com\//i, '')
+    .replace(/[/?#].*$/, '')
+    .replace(/^@/, '')
+    .trim();
+  if (!bare) return null;
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(bare)) {
+    errors.push('that does not look like an Instagram handle');
+    return null;
+  }
+  return bare;
 }
 
 function nullableKey(v: unknown, field: string, errors: string[]): number | null {
@@ -52,13 +105,14 @@ export function parseRunner(body: unknown): { value?: RunnerInput; errors: strin
 
   const value: RunnerInput = {
     display_name:      display_name ?? '',
-    bib_number:        nullableText(b.bib_number, 20, 'bib number', errors),
+    bib_number:        bibNumber(b.bib_number, errors),
     color_key:         nullableKey(b.color_key, 'color', errors),
     wave_key:          nullableKey(b.wave_key, 'wave', errors),
     corral_key:        nullableKey(b.corral_key, 'corral', errors),
     transport_key:     nullableKey(b.transport_key, 'transport', errors),
     depart_time_local,
     meetup_note:       nullableText(b.meetup_note, 140, 'outfit note', errors),
+    instagram:         instagramHandle(b.instagram, errors),
   };
 
   // A departure time with no vehicle is a time for nothing.
