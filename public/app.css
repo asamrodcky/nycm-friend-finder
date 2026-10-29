@@ -148,6 +148,13 @@ h2 {
 }
 
 .pill { background: var(--pill-bg); border-color: var(--pill-line); color: var(--text); }
+/* The Instagram handle is the one pill that is a link, and the first
+   time a pill has been a tap target at all. At the shared padding it
+   measured 23px tall -- under the 24px floor §19 set for 2.5.8 -- so it
+   gets its own, larger. Extra padding here only, because every other
+   pill is text and changing their height would reflow the badge rows. */
+a.pill { text-decoration: none; padding: 5px 10px; }
+a.pill:hover { border-color: var(--tag-line); }
 /* The transport icon is the one graphic on the card people actually
    read, so it keeps its full size inside the badge. A heavier stroke
    than the 1.7 elsewhere: at 15px the ferry's mast and the bus's

@@ -82,6 +82,9 @@ const PATHS = {
   unknown: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3V14"/><path d="M12 17.5v.01"/>',
   star:    '<path d="M12 3.5l2.6 5.5 5.9.8-4.3 4.2 1 5.9L12 17.1l-5.2 2.8 1-5.9L3.5 9.8l5.9-.8z"/>',
   edit:    '<path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  // A plain camera, not the Instagram mark -- that is a brand asset, and
+  // every other icon here is drawn rather than borrowed.
+  camera:  '<rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.5 7l1.5-2.5h4L15.5 7"/>',
 };
 
 export function icon(name, { filled = false } = {}) {

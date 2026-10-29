@@ -253,6 +253,12 @@ function card(r, { mine = false, tag = null } = {}) {
         ${r.depart_time_local ? when('leaves', r.depart_time_local) : ''}
       </div>` : ''}
 
+      ${r.instagram ? `<div class="facts">
+        <a class="pill" href="https://instagram.com/${encodeURIComponent(r.instagram)}"
+           target="_blank" rel="noopener noreferrer nofollow"
+           >${icon('camera')}@${esc(r.instagram)}</a>
+      </div>` : ''}
+
       ${r.meetup_note ? `<div class="note">“${esc(r.meetup_note)}”</div>` : ''}
     </div>`;
 }

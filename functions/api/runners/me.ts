@@ -35,8 +35,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // Insert-only: supersede the live row, then add the new one, so the
     // snapshot keeps a record of who moved wave and when.
     await env.DB.batch([
-      env.DB.prepare('UPDATE dim_runner SET display_name = ? WHERE runner_key = ?')
-        .bind(value.display_name, who.runnerKey),
+      // The handle is a dim_runner attribute, like the name: about the
+      // PERSON, not about this race's assignment, so it is updated in
+      // place rather than versioned on the fact table.
+      env.DB.prepare('UPDATE dim_runner SET display_name = ?, instagram = ? WHERE runner_key = ?')
+        .bind(value.display_name, value.instagram, who.runnerKey),
       env.DB.prepare(
         `UPDATE fct_runner_start SET is_current = 0, valid_to_utc = ${NOW}
           WHERE runner_key = ? AND is_current = 1`,

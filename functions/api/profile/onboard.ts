@@ -39,9 +39,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // their assignment land together or not at all.
     await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO dim_runner (display_name, pin_hash, pin_salt, claimed_at_utc)
-         VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))`,
-      ).bind(value.display_name, hash, salt),
+        `INSERT INTO dim_runner (display_name, instagram, pin_hash, pin_salt, claimed_at_utc)
+         VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))`,
+      ).bind(value.display_name, value.instagram, hash, salt),
       env.DB.prepare(`
         INSERT INTO fct_runner_start
           (runner_key, bib_number, color_key, wave_key, corral_key, transport_key, depart_time_local, meetup_note)

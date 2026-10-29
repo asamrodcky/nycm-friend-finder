@@ -44,7 +44,13 @@ export function entryFields(meta, cur = {}) {
 
     <label for="f-note">What you'll be wearing <span class="hint">optional — throwaway layers too</span></label>
     <input id="f-note" maxlength="140" placeholder="grey puffy over orange singlet, neon shoes"
-           value="${esc(cur.meetup_note || '')}">`;
+           value="${esc(cur.meetup_note || '')}">
+
+    <label for="f-insta">Instagram <span class="hint">optional — easier than describing yourself</span></label>
+    <input id="f-insta" maxlength="120" autocapitalize="none" autocorrect="off" spellcheck="false"
+           placeholder="@yourhandle" aria-describedby="f-insta-hint"
+           value="${cur.instagram ? '@' + esc(cur.instagram) : ''}">
+    <div class="hint" id="f-insta-hint">Everyone who can see the roster can see this.</div>`;
 }
 
 /** Wires colour chips, the derived start time, and the departure guard. */
@@ -98,6 +104,7 @@ export function wireEntryFields(root, meta) {
     transport_key:     Number($('f-transport').value) || null,
     depart_time_local: $('f-departs').value || null,
     meetup_note:       $('f-note').value.trim() || null,
+    instagram:         $('f-insta').value.trim() || null,
   });
 }
 
