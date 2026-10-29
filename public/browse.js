@@ -17,9 +17,10 @@
 //
 // The ladder below was tightened a second time: see the note on
 // sameRide. A shared vehicle no longer counts without a shared
-// departure time, and sharing a village across different waves does not
+// departure time, and sharing a village across different WAVES does not
 // count at all. Both were producing confident-looking matches between
-// people who would never see each other.
+// people who would never see each other. Sharing a wave across
+// different villages does still count -- see sameWave.
 
 import { api, store, KEY, esc, icon, clock, startFacts, transportIcon, watchForUpdates } from './app.js';
 import { ensureAccess } from './gate.js';
@@ -42,10 +43,34 @@ const savedKeys = () => new Set(saved.map(s => s.saved_runner_key));
 
 const both = (a, b) => a !== null && a !== undefined && a === b;
 
-/** Same village AND same wave: the same place at the same time. */
-const sameStart = (m, t) => both(m.color_key, t.color_key) && both(m.wave_key, t.wave_key);
+/**
+ * Same wave: the same start time, whatever village you are in.
+ *
+ * Village is deliberately NOT required. The three start villages at
+ * Fort Wadsworth are walkable -- Sam visited friends in another colour's
+ * village on race morning last year -- so same wave across colours is
+ * the same half-hour in the same venue, a short walk apart. It is a
+ * weaker match than sharing a village, not a false one.
+ *
+ * This is the same principle that threw out the old colour-only rung:
+ * what makes two people findable is being there at the same TIME. That
+ * rung spanned different waves and could be two hours apart. This one
+ * cannot be apart at all.
+ */
+const sameWave = (m, t) => both(m.wave_key, t.wave_key);
 
-/** ...and the same corral, so you are penned in together. */
+/** Same village at the same time: no walk between villages needed. */
+const sameStart = (m, t) => both(m.color_key, t.color_key) && sameWave(m, t);
+
+/**
+ * ...and the same corral, so you are penned in together.
+ *
+ * Built on sameStart, not sameWave, and that is load-bearing: corral
+ * letters only mean anything inside a colour. Orange C and Blue C are
+ * different pens in different villages, so matching on the letter alone
+ * would send two people to opposite ends of Fort Wadsworth to look for
+ * each other.
+ */
 const sameCorral = (m, t) => sameStart(m, t) && both(m.corral_key, t.corral_key);
 
 /**
@@ -70,16 +95,21 @@ const sameRide = (m, t) =>
   both(m.transport_key, t.transport_key) &&
   both(m.depart_time_local, t.depart_time_local);
 
-// Closest first. Travelling together AND starting together is the whole
-// morning; a shared ride alone still means an hour in the same queue,
-// but it ends when you reach the villages, so it sits below a shared
-// start. First match wins, so each person gets exactly one reason.
+// Closest first, where "close" means how much of the morning you
+// actually spend within reach of each other. Travelling together and
+// starting together is all of it. A shared village beats a shared ride,
+// because the village is where you stand around for half an hour and
+// the ride is where you are herded. A shared wave alone is last: same
+// time, different village, one walk away.
+//
+// First match wins, so each person gets exactly one reason.
 const LADDER = [
-  ['same ride + corral', (m, t) => sameRide(m, t) && sameCorral(m, t)],
-  ['same ride + wave',   (m, t) => sameRide(m, t) && sameStart(m, t)],
-  ['same corral',        (m, t) => sameCorral(m, t)],
-  ['same wave',          (m, t) => sameStart(m, t)],
-  ['same ride',          (m, t) => sameRide(m, t)],
+  ['same ride + corral',  (m, t) => sameRide(m, t) && sameCorral(m, t)],
+  ['same ride + wave',    (m, t) => sameRide(m, t) && sameWave(m, t)],
+  ['same corral',         (m, t) => sameCorral(m, t)],
+  ['same village + wave', (m, t) => sameStart(m, t)],
+  ['same ride',           (m, t) => sameRide(m, t)],
+  ['same wave',           (m, t) => sameWave(m, t)],
 ];
 
 /** Returns { rank, label } or null when you could not run into them. */
@@ -96,7 +126,7 @@ function overlap(mine, them) {
  * no explanation reads as the app having nothing to say.
  */
 function whyNobodyNear(mine) {
-  const canMatchStart = mine.color_key && mine.wave_key;
+  const canMatchStart = !!mine.wave_key;
   const canMatchRide  = mine.transport_is_matchable && mine.depart_time_local;
   return canMatchStart || canMatchRide
     ? 'Nobody shares your wave, or your ride at your departure time, yet. Everyone else is below.'
