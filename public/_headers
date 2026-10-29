@@ -34,10 +34,21 @@
 # so the mistake cannot reach production silently -- which is exactly how
 # the splat version got there.
 #
+# Referrer-Policy on the two pages, because they are the only ones that
+# link off-site: a runner's Instagram handle. `no-referrer` means
+# instagram.com is told nothing about where the click came from -- not
+# the path, not the query string, not even the origin.
+#
+# The shared-link password is already stripped from the URL by gate.js
+# before anything is clickable, so this is the second lock rather than
+# the first. The Instagram link also carries rel="noreferrer" itself.
+# Belt and braces on a page that now holds people's social handles.
 /
   Cache-Control: no-cache
+  Referrer-Policy: no-referrer
 /me
   Cache-Control: no-cache
+  Referrer-Policy: no-referrer
 /app.css
   Cache-Control: no-cache
 /app.js
@@ -51,4 +62,8 @@
 /me.js
   Cache-Control: no-cache
 /version.json
+  Cache-Control: no-cache
+# Changes about once a year, but listed so every file in public/ has an
+# explicit rule rather than falling through to the Pages default.
+/robots.txt
   Cache-Control: no-cache

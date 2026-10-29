@@ -1,0 +1,12 @@
+# The roster is a private list of real people -- names, bib numbers,
+# where they will be standing on race morning, and now Instagram
+# handles. None of it is in the HTML a crawler receives (the page is
+# empty until an API call it cannot make), so this is not what keeps the
+# data private; the group password is.
+#
+# This is here so the site does not surface in search results at all.
+# Being findable invites traffic that has no reason to be here, and the
+# link is about to go out to several running club group chats, which is
+# exactly when a stray index becomes likely.
+User-agent: *
+Disallow: /

@@ -22,6 +22,49 @@ function fail(root, message) {
   root.querySelector('form')?.append(box);
 }
 
+// The query parameter that carries the group password in a shared link,
+// so one URL can be pasted into a group chat instead of a link plus a
+// password people then have to find again.
+//
+// BE CLEAR ABOUT WHAT THIS IS. Once a link is in a few group chats the
+// password is not a secret -- it is forwarded, screenshotted and pasted
+// onward. This buys "unlisted, not private": crawlers, scrapers and
+// anyone who simply types the domain get nothing, while anybody who was
+// sent the link walks in. That is the Google-Doc "anyone with the link"
+// posture, and it is the right size of boundary for a running club and
+// the wrong one for the open internet.
+//
+// What makes it safe to regret: group tokens are HMAC'd with
+// TOKEN_SECRET, not with the password, so changing GROUP_PASSCODE kills
+// old links without signing out a single person who is already in.
+const LINK_KEY = 'k';
+
+/**
+ * Trades a password from the URL for a token, then takes it out of the
+ * URL.
+ *
+ * Stripping is the point of doing it here rather than prefilling the
+ * form. After the first moment the address bar is clean, so a
+ * screenshot, a bookmark, the back button and any outbound Referer do
+ * not carry the password onward.
+ *
+ * A wrong or rotated key is stripped too and falls through to the normal
+ * password screen -- a dead link should ask, not look broken.
+ */
+async function redeemLinkKey() {
+  const url = new URL(location.href);
+  const key = url.searchParams.get(LINK_KEY);
+  if (!key) return;
+
+  try {
+    const { token } = await api('/api/auth', { method: 'POST', body: { passcode: key } });
+    store.set(KEY.group, token);
+  } catch { /* stale or wrong: fall through to the form */ }
+
+  url.searchParams.delete(LINK_KEY);
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+}
+
 /** Resolves to the runner_key once we have a profile. */
 export function ensureAccess(root) {
   return new Promise(resolve => {
@@ -31,7 +74,9 @@ export function ensureAccess(root) {
       if (!store.get(KEY.group)) return askPassword(root, next);
       return askWhoYouAre(root, next);
     };
-    next();
+    // Redeemed before anything renders, so somebody arriving on a shared
+    // link never sees a password screen flash up and disappear.
+    redeemLinkKey().then(next);
   });
 }
 
@@ -41,7 +86,8 @@ function askPassword(root, next) {
   h(root, `
     <h2>Group password</h2>
     <form class="card stack">
-      <p class="meta">Ask Sam for the password if you don't have it.</p>
+      <p class="meta">If you were sent a link, open that instead — it signs you in.
+         Otherwise ask Sam for the password.</p>
       <label for="g-pass">Password</label>
       <input id="g-pass" type="password" autocomplete="current-password">
       <button type="submit">Continue</button>
