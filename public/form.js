@@ -107,7 +107,7 @@ export function pinFields() {
     <label for="f-pin">Choose a PIN</label>
     <input id="f-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"
            aria-describedby="f-pin-hint">
-    <div class="hint" id="f-pin-hint">4–6 digits. Six is safer. Don't reuse a PIN you use anywhere else.</div>
+    <div class="hint" id="f-pin-hint">6 digits. Don't reuse a PIN you use anywhere else, and avoid 123456.</div>
 
     <label for="f-pin2">Confirm PIN</label>
     <input id="f-pin2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">`;
@@ -117,7 +117,10 @@ export function pinFields() {
 export function readPin(root) {
   const pin  = root.querySelector('#f-pin').value.trim();
   const pin2 = root.querySelector('#f-pin2').value.trim();
-  if (!/^\d{4,6}$/.test(pin)) throw new Error('PIN must be 4 to 6 digits');
+  // Mirrors pinLooksValid so the length is caught before a round trip.
+  // The server owns the rule; the "too obvious" half is checked only
+  // there, so there is one copy of the interesting logic, not two.
+  if (!/^\d{6}$/.test(pin)) throw new Error('PIN must be 6 digits');
   // Caught here rather than server-side: a typo at creation locks you
   // out of your own entry permanently, and there is no email to recover
   // through -- Sam has to clear it by hand.

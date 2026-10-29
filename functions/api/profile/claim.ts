@@ -6,7 +6,7 @@
 
 import { type Env, requireGroup, mintProfileToken } from '../../../lib/auth';
 import { err, json } from '../../../lib/http';
-import { hashPin, pinLooksValid } from '../../../lib/pin';
+import { PIN_RULE, PIN_TOO_OBVIOUS, hashPin, pinIsTooObvious, pinLooksValid } from '../../../lib/pin';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const blocked = await requireGroup(request, env);
@@ -21,7 +21,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   } catch { return err('expected a JSON body'); }
 
   if (!Number.isInteger(runnerKey) || runnerKey < 1) return err('pick who you are');
-  if (!pinLooksValid(pin)) return err('PIN must be 4 to 6 digits');
+  if (!pinLooksValid(pin)) return err(PIN_RULE);
+  // Checked here and not in the browser: one rule, one place. The
+  // forms already surface whatever the server says.
+  if (pinIsTooObvious(pin)) return err(PIN_TOO_OBVIOUS);
 
   const row = await env.DB.prepare(
     'SELECT runner_key, display_name, pin_hash FROM dim_runner WHERE runner_key = ?',
