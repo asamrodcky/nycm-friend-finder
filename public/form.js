@@ -42,8 +42,8 @@ export function entryFields(meta, cur = {}) {
     <select id="f-departs" aria-describedby="f-departs-hint">${opts(meta.departure_slots, 'value', s => s.label, cur.depart_time_local)}</select>
     <div class="hint" id="f-departs-hint"></div>
 
-    <label for="f-note">Note <span class="hint">optional — what to look for</span></label>
-    <input id="f-note" maxlength="140" placeholder="orange poncho, by the Starbucks"
+    <label for="f-note">What you'll be wearing <span class="hint">optional — throwaway layers too</span></label>
+    <input id="f-note" maxlength="140" placeholder="grey puffy over orange singlet, neon shoes"
            value="${esc(cur.meetup_note || '')}">`;
 }
 

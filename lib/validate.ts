@@ -58,7 +58,7 @@ export function parseRunner(body: unknown): { value?: RunnerInput; errors: strin
     corral_key:        nullableKey(b.corral_key, 'corral', errors),
     transport_key:     nullableKey(b.transport_key, 'transport', errors),
     depart_time_local,
-    meetup_note:       nullableText(b.meetup_note, 140, 'note', errors),
+    meetup_note:       nullableText(b.meetup_note, 140, 'outfit note', errors),
   };
 
   // A departure time with no vehicle is a time for nothing.
