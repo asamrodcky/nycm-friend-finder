@@ -1,5 +1,6 @@
 import { type Env, mintGroupToken, passcodeMatches } from '../../lib/auth';
 import { err, json } from '../../lib/http';
+import { GROUP, LOCKED_OUT, clearFailures, clientIp, isLockedOut, noteFailure } from '../../lib/throttle';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.GROUP_PASSCODE || !env.TOKEN_SECRET) {
@@ -15,7 +16,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   if (!passcode) return err('passcode is required');
-  if (!passcodeMatches(passcode, env)) return err('that passcode is not right', 401);
 
+  // Checked after parsing but before comparing, so a locked-out caller
+  // learns nothing about the passcode itself.
+  const ip = clientIp(request);
+  if (await isLockedOut(env, GROUP, ip)) return err(LOCKED_OUT, 429);
+
+  if (!passcodeMatches(passcode, env)) {
+    await noteFailure(env, GROUP, ip);
+    return err('that passcode is not right', 401);
+  }
+
+  await clearFailures(env, GROUP, ip);
   return json({ token: await mintGroupToken(env) });
 };

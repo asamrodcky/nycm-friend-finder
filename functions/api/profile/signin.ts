@@ -7,6 +7,7 @@
 import { type Env, requireGroup, mintProfileToken } from '../../../lib/auth';
 import { err, json } from '../../../lib/http';
 import { pinMatches } from '../../../lib/pin';
+import { LOCKED_OUT, SIGNIN, clearFailures, isLockedOut, noteFailure } from '../../../lib/throttle';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const blocked = await requireGroup(request, env);
@@ -23,6 +24,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!who) return err('enter your bib number or your name');
   if (!pin) return err('enter your PIN');
 
+  // Keyed on the target, lowercased so it matches the NOCASE lookup
+  // below -- otherwise "Runner O" and "runner o" would get a fresh budget
+  // each. Checked before the row is even fetched, so a locked-out
+  // caller cannot use timing to learn whether a bib exists.
+  const target = who.toLowerCase();
+  if (await isLockedOut(env, SIGNIN, target)) return err(LOCKED_OUT, 429);
+
   // Bib lives on the fact table, name on the dimension, so look in both.
   // NOCASE so "runner o" finds "Runner O".
   const row = await env.DB.prepare(`
@@ -37,9 +45,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   // One message for every failure: no confirming which bibs or names
   // exist, and no telling an unclaimed row apart from a wrong PIN.
-  const nope = err('that bib or name and PIN do not match', 401);
-  if (!row?.pin_hash || !row.pin_salt) return nope;
-  if (!await pinMatches(pin, row.pin_hash, row.pin_salt)) return nope;
+  const nope = async () => {
+    await noteFailure(env, SIGNIN, target);
+    return err('that bib or name and PIN do not match', 401);
+  };
+  if (!row?.pin_hash || !row.pin_salt) return nope();
+  if (!await pinMatches(pin, row.pin_hash, row.pin_salt)) return nope();
+
+  await clearFailures(env, SIGNIN, target);
 
   const me = await env.DB.prepare('SELECT * FROM v_runner_start WHERE runner_key = ?')
     .bind(row.runner_key).first();
