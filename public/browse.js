@@ -14,6 +14,12 @@
 // and friends find clusters anywhere in the roster, not clusters
 // containing you, so "Same corral" was heading a list of corrals you
 // were not in. Those views still exist for analysis in sql/.
+//
+// The ladder below was tightened a second time: see the note on
+// sameRide. A shared vehicle no longer counts without a shared
+// departure time, and sharing a village across different waves does not
+// count at all. Both were producing confident-looking matches between
+// people who would never see each other.
 
 import { api, store, KEY, esc, icon, clock, startFacts, transportIcon, watchForUpdates } from './app.js';
 import { ensureAccess } from './gate.js';
@@ -23,57 +29,78 @@ let roster = [], saved = [], gaps = [], me = null;
 const savedKeys = () => new Set(saved.map(s => s.saved_runner_key));
 
 // ---------- overlap ----------
-// Mirrors v_saved_overlap. Note every test checks both sides for null
-// first: in JS `null === null` is true, so without that guard two people
-// who both have no corral would read as sharing one -- the same trap the
-// SQL views guard against.
+//
+// The question this answers is narrow on purpose: could you and this
+// person actually run into each other on race morning? There are only
+// two occasions where that can happen -- the journey to Staten Island,
+// and the start village once you are there -- so a match has to be one
+// of those. Anything else is a coincidence that looks like a lead.
+//
+// Every test checks both sides for null first: in JS `null === null` is
+// true, so without that guard two people who both have no corral would
+// read as sharing one -- the same trap the SQL views guard against.
 
 const both = (a, b) => a !== null && a !== undefined && a === b;
 
-// Strongest first within each family. Reporting one from each avoids
-// "same corral + wave + village", which are all the same fact.
-const START_FAMILY = [
-  ['corral',  'corral',  (m, t) => both(m.color_key, t.color_key) && both(m.wave_key, t.wave_key) && both(m.corral_key, t.corral_key)],
-  ['wave',    'wave',    (m, t) => both(m.color_key, t.color_key) && both(m.wave_key, t.wave_key)],
-  ['village', 'village', (m, t) => both(m.color_key, t.color_key)],
-];
-const RIDE_FAMILY = [
-  ['slot', 'ride + time', (m, t) => m.transport_is_matchable && both(m.transport_key, t.transport_key) && both(m.depart_time_local, t.depart_time_local)],
-  ['ride', 'ride',        (m, t) => m.transport_is_matchable && both(m.transport_key, t.transport_key)],
-];
+/** Same village AND same wave: the same place at the same time. */
+const sameStart = (m, t) => both(m.color_key, t.color_key) && both(m.wave_key, t.wave_key);
 
-// How likely each overlap makes an actual meetup, strongest first. This
-// is one combined ladder rather than two family scores: sharing a
-// village AND a wave puts you in the same place at the same time, which
-// beats sharing a village with someone on a different wave even if you
-// are both on ferries. But sharing a vehicle at the same minute beats
-// both, because you are literally on the same boat.
+/** ...and the same corral, so you are penned in together. */
+const sameCorral = (m, t) => sameStart(m, t) && both(m.corral_key, t.corral_key);
+
+/**
+ * The same vehicle at the same departure time.
+ *
+ * The time is required, not a bonus. "We are both on the ferry" was the
+ * single worst signal in the old ladder: the slots run 04:00 to 08:30,
+ * so two ferry riders can be four and a half hours apart and were still
+ * being called a match. A shared vehicle with no shared time is not a
+ * meetup, it is a coincidence of transport mode.
+ *
+ * transport_is_matchable excludes the vague answers -- "Bus, not sure
+ * which", "Still deciding" -- and "Have My Own Transportation", where
+ * two people leaving at the same minute are still in separate cars.
+ * Checked on both sides even though a shared transport_key means a
+ * shared dim_transport row and therefore the same flag: the rest of
+ * this file earns its correctness by never assuming that, and the
+ * assumption is the kind that stops holding quietly.
+ */
+const sameRide = (m, t) =>
+  !!m.transport_is_matchable && !!t.transport_is_matchable &&
+  both(m.transport_key, t.transport_key) &&
+  both(m.depart_time_local, t.depart_time_local);
+
+// Closest first. Travelling together AND starting together is the whole
+// morning; a shared ride alone still means an hour in the same queue,
+// but it ends when you reach the villages, so it sits below a shared
+// start. First match wins, so each person gets exactly one reason.
 const LADDER = [
-  (m, t) => RIDE_FAMILY[0][2](m, t),   // same ride + time
-  (m, t) => START_FAMILY[0][2](m, t),  // same corral
-  (m, t) => START_FAMILY[1][2](m, t),  // same village + wave
-  (m, t) => RIDE_FAMILY[1][2](m, t),   // same ride, time unknown
-  (m, t) => START_FAMILY[2][2](m, t),  // same village
+  ['same ride + corral', (m, t) => sameRide(m, t) && sameCorral(m, t)],
+  ['same ride + wave',   (m, t) => sameRide(m, t) && sameStart(m, t)],
+  ['same corral',        (m, t) => sameCorral(m, t)],
+  ['same wave',          (m, t) => sameStart(m, t)],
+  ['same ride',          (m, t) => sameRide(m, t)],
 ];
 
-/** Returns { rank, label } or null when nothing is shared. */
+/** Returns { rank, label } or null when you could not run into them. */
 function overlap(mine, them) {
   if (!mine) return null;
-  const start = START_FAMILY.find(([, , test]) => test(mine, them));
-  const ride  = RIDE_FAMILY.find(([, , test]) => test(mine, them));
-  if (!start && !ride) return null;
+  const rung = LADDER.findIndex(([, test]) => test(mine, them));
+  return rung === -1 ? null : { rank: rung, label: LADDER[rung][0] };
+}
 
-  // Sort on the ladder rung first, then break ties by how much ELSE is
-  // shared: someone on your ferry who is also in your village beats
-  // someone on your ferry and nothing more.
-  const rung      = LADDER.findIndex(test => test(mine, them));
-  const startTier = start ? START_FAMILY.indexOf(start) : 9;
-  const rideTier  = ride ? RIDE_FAMILY.indexOf(ride) : 9;
-
-  return {
-    rank: rung * 100 + startTier * 10 + rideTier,
-    label: 'same ' + [start?.[1], ride?.[1]].filter(Boolean).join(' + '),
-  };
+/**
+ * Why the "people near you" list is empty, which is now a normal state
+ * rather than a sign of a small roster -- the ladder above rejects the
+ * loose matches that used to keep it populated. An empty section with
+ * no explanation reads as the app having nothing to say.
+ */
+function whyNobodyNear(mine) {
+  const canMatchStart = mine.color_key && mine.wave_key;
+  const canMatchRide  = mine.transport_is_matchable && mine.depart_time_local;
+  return canMatchStart || canMatchRide
+    ? 'Nobody shares your wave, or your ride at your departure time, yet. Everyone else is below.'
+    : 'Add your start colour and wave — and your departure time, if you have one — and the people you could actually run into will show up here.';
 }
 
 // ---------- cards ----------
@@ -227,8 +254,10 @@ function render() {
       ? saved.map(s => savedCard(s, mine)).join('')
       : `<p class="empty">Nobody yet. Tap a star to add someone you want to find on race morning.</p>`}
 
-    ${near.length ? `<h2>People near you (${near.length})</h2>
-      ${near.map(x => card(x.r, { tag: x.hit.label })).join('')}` : ''}
+    ${mine ? `<h2>People near you ${near.length ? `(${near.length})` : ''}</h2>
+      ${near.length
+        ? near.map(x => card(x.r, { tag: x.hit.label })).join('')
+        : `<p class="empty">${esc(whyNobodyNear(mine))}</p>`}` : ''}
 
     <h2>Everyone (${others.length}${others.length !== total ? ` of ${total}` : ''})</h2>
     ${filterBar()}
