@@ -87,7 +87,7 @@ export function ensureAccess(root) {
       const me = Number(store.get(KEY.me));
       if (store.get(KEY.profile) && me) return resolve(me);
       if (!store.get(KEY.group)) return askPassword(root, next);
-      return askWhoYouAre(root, next);
+      return askRole(root, next);
     };
     // Redeemed before anything renders, so somebody arriving on a shared
     // link never sees a password screen flash up and disappear.
@@ -120,26 +120,30 @@ function askPassword(root, next) {
   });
 }
 
-// ---------- 2. who are you ----------
+// ---------- 2. why you are here, then who you are ----------
 
-async function askWhoYouAre(root, next) {
-  // Claiming only works on rows somebody else created and nobody has
-  // PINned yet -- a spreadsheet import. Onboarding always sets a PIN, so
-  // on a self-serve setup that list is permanently empty and the button
-  // is a dead end. Worse, it is the one a returning person reaches for,
-  // because they ARE already on the list. So only offer it when it can
-  // actually do something; it comes back by itself if a roster is
-  // imported later.
-  let claimable = 0;
-  try { claimable = (await api('/api/profile/unclaimed')).unclaimed.length; }
-  catch { /* fall through to the two-button form */ }
-
-  // WHY THIS COPY IS HERE. §29 measured the funnel: 423 unique visitors,
-  // 36 signups, 8.5%. /api/runners is requireProfile, so this screen is
-  // the wall -- roughly 390 people were asked to invent a PIN before
-  // being shown a single reason to. They never learned 56 people were
-  // already inside. This is Sam's own explanation, trimmed to a phone
-  // screen, put in front of the ask instead of behind it.
+/**
+ * Screen one: the reason, then what kind of race morning you are having.
+ *
+ * WHY THE COPY IS HERE AT ALL. §29 measured the funnel: 423 unique
+ * visitors, 36 signups, 8.5%. /api/runners is requireProfile, so this is
+ * the wall -- roughly 390 people were asked to invent a PIN before being
+ * shown a single reason to. They never learned 56 people were already
+ * inside. This is Sam's own explanation, trimmed to a phone screen, put
+ * in front of the ask instead of behind it.
+ *
+ * WHY ROLE COMES BEFORE new/returning. Running and spectating are two
+ * different race mornings, and asking which one first means the screen
+ * after it, and the form after that, can be about one of them instead of
+ * hedging between both. It also puts a question anybody can answer ahead
+ * of the one that needs a decision about accounts.
+ *
+ * "Running", not "racing": it matches the form's own chips word for word,
+ * and "racing" quietly writes off the charity runners and the
+ * first-timers who are here to finish, who are a real part of this
+ * roster.
+ */
+function askRole(root, next) {
   h(root, `
     <h2 class="lede">Nobody should feel alone on race morning.</h2>
     <div class="card why">
@@ -155,19 +159,53 @@ async function askWhoYouAre(root, next) {
       <p class="why-last">So this is a simple, no-frills site that matches you
          with other runners who might have overlapping race mornings.</p>
     </div>
-    <h2>Who are you?</h2>
-    <div class="stack">
-      ${claimable ? `<button id="w-claim" class="ghost">Someone already added me</button>` : ''}
-      <button id="w-signin" class="ghost">I've been here before</button>
-      <button id="w-new" class="ghost">I'm new — add me</button>
+    <h2 id="role-q">Which are you?</h2>
+    <div class="stack" role="group" aria-labelledby="role-q">
+      <button id="r-runner" class="ghost">I'm running</button>
+      <button id="r-spectator" class="ghost">I'm spectating</button>
     </div>
-    <p class="hint">${claimable
-      ? 'Pick "someone already added me" if your name was entered for you.'
-      : 'Been here before? Sign in with your bib number and PIN.'}</p>`);
+    <p class="hint">Spectating counts &mdash; tell people which mile you&rsquo;ll be at
+       and they can look for you.</p>`);
 
-  if (claimable) root.querySelector('#w-claim').onclick = () => claimScreen(root, next);
-  root.querySelector('#w-signin').onclick = () => signinScreen(root, next);
-  root.querySelector('#w-new').onclick    = () => onboardScreen(root, next);
+  root.querySelector('#r-runner').onclick    = () => askNewOrReturning(root, next, 'runner');
+  root.querySelector('#r-spectator').onclick = () => askNewOrReturning(root, next, 'spectator');
+}
+
+/**
+ * Screen two: new here, or back again.
+ *
+ * Two entrances and nothing else, so neither is the one you squint at.
+ *
+ * Claiming is the exception and it is conditional for a reason. It only
+ * works on rows somebody else created and nobody has PINned yet -- a
+ * spreadsheet import. Self-serve onboarding always sets a PIN, so on a
+ * roster like this one that list is permanently empty and the button is a
+ * dead end; worse, it is the one a returning person reaches for, because
+ * they ARE already on the list. It appears only when it can actually do
+ * something, and it sits here rather than on the role screen because
+ * somebody already on the list is a returning person, not a new one.
+ */
+async function askNewOrReturning(root, next, role) {
+  const spectating = role === 'spectator';
+
+  let claimable = 0;
+  try { claimable = (await api('/api/profile/unclaimed')).unclaimed.length; }
+  catch { /* fall through to the two-button form */ }
+
+  h(root, `
+    <h2>${spectating ? 'Spectating' : 'Running'} &mdash; have you been here before?</h2>
+    <div class="stack">
+      <button id="w-new" class="ghost">I'm new &mdash; add me</button>
+      <button id="w-signin" class="ghost">I've been here before</button>
+      ${claimable ? `<button id="w-claim" class="mini">Someone already added me</button>` : ''}
+    </div>
+    <p class="hint">Signing in again takes your ${spectating ? '' : 'bib number and '}PIN.</p>
+    <button type="button" id="w-back" class="ghost">&larr; Back</button>`);
+
+  root.querySelector('#w-new').onclick    = () => onboardScreen(root, next, role);
+  root.querySelector('#w-signin').onclick = () => signinScreen(root, next, role);
+  root.querySelector('#w-back').onclick   = () => askRole(root, next);
+  if (claimable) root.querySelector('#w-claim').onclick = () => claimScreen(root, next, role);
 }
 
 function land(data, next) {
@@ -178,7 +216,7 @@ function land(data, next) {
 
 // ---------- 2a. claim an imported row ----------
 
-async function claimScreen(root, next) {
+async function claimScreen(root, next, role) {
   h(root, '<p class="empty">Loading the list…</p>');
   let unclaimed;
   try { ({ unclaimed } = await api('/api/profile/unclaimed')); }
@@ -196,8 +234,8 @@ async function claimScreen(root, next) {
         <button id="b-new" class="ghost">Add me instead</button>
         <button id="b-back" class="ghost">Back</button>
       </div>`);
-    root.querySelector('#b-new').onclick  = () => onboardScreen(root, next);
-    root.querySelector('#b-back').onclick = () => askWhoYouAre(root, next);
+    root.querySelector('#b-new').onclick  = () => onboardScreen(root, next, role);
+    root.querySelector('#b-back').onclick = () => askNewOrReturning(root, next, role);
     return;
   }
 
@@ -212,7 +250,7 @@ async function claimScreen(root, next) {
       <button type="button" id="c-back" class="ghost">Back</button>
     </form>`);
 
-  root.querySelector('#c-back').onclick = () => askWhoYouAre(root, next);
+  root.querySelector('#c-back').onclick = () => askNewOrReturning(root, next, role);
   root.querySelector('form').addEventListener('submit', async e => {
     e.preventDefault();
     try {
@@ -227,7 +265,7 @@ async function claimScreen(root, next) {
 
 // ---------- 2b. sign in ----------
 
-function signinScreen(root, next) {
+function signinScreen(root, next, role) {
   // Bib only, by default. The API accepts a name too, but offering both
   // in one field invites people to type a name that does not match what
   // they entered the first time -- "Sam" vs "Samuel" -- and get a
@@ -261,7 +299,7 @@ function signinScreen(root, next) {
     root.querySelector('#s-who').focus();
   };
 
-  root.querySelector('#s-back').onclick = () => askWhoYouAre(root, next);
+  root.querySelector('#s-back').onclick = () => askNewOrReturning(root, next, role);
   root.querySelector('form').addEventListener('submit', async e => {
     e.preventDefault();
     try {
@@ -275,7 +313,7 @@ function signinScreen(root, next) {
 
 // ---------- 2c. brand new person ----------
 
-async function onboardScreen(root, next) {
+async function onboardScreen(root, next, role) {
   h(root, '<p class="empty">Loading…</p>');
   let meta;
   try { meta = await api('/api/meta'); }
@@ -284,7 +322,7 @@ async function onboardScreen(root, next) {
   h(root, `
     <h2>Add yourself</h2>
     <form class="card">
-      ${entryFields(meta)}
+      ${entryFields(meta, { participant_role: role })}
       ${pinFields()}
       <button type="submit">Save my info</button>
       <button type="button" id="o-back" class="ghost">Back</button>
@@ -292,7 +330,7 @@ async function onboardScreen(root, next) {
 
   const form = root.querySelector('form');
   const read = wireEntryFields(form, meta);
-  root.querySelector('#o-back').onclick = () => askWhoYouAre(root, next);
+  root.querySelector('#o-back').onclick = () => askNewOrReturning(root, next, role);
 
   form.addEventListener('submit', async e => {
     e.preventDefault();

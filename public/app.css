@@ -404,6 +404,67 @@ h2.lede {
 .splits caption { caption-side: bottom; color: var(--muted); font-size: 12px;
                   text-align: left; padding-top: 7px; }
 
+/* ---------- sections ---------- */
+
+/* The page was a flat run of identical white cards on grey, with an 11px
+   muted label the only marker between "Your people" and "People near
+   you". At 58 people that reads as one list that never ends.
+
+   Three things give it depth, in increasing order of how much they do:
+   space between sections, a hairline at each boundary, and a header band
+   that STICKS while its section is on screen. The sticky header is the
+   one that actually matters -- scrolling the roster it keeps telling you
+   which group you are in, which no amount of divider line can do.
+
+   Nothing here nests a surface inside a surface: each person is already
+   a card, and wrapping sections in a second panel would turn the page to
+   mush. The grouping is carried by the header and the rules instead. */
+.sec { margin-top: 26px; }
+.sec:first-of-type { margin-top: 14px; }
+
+/* The band. Opaque, because content scrolls underneath it -- a
+   transparent sticky header shows cards sliding through the text. It
+   spans the same content column as the cards, so nothing passes beside
+   it. The hairline is on the bottom only: a boundary, not a box. */
+.sec-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 10px; padding: 9px 0 7px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  /* h2 is 11px uppercase muted everywhere; as a section header it has to
+     carry a little more weight or the band looks empty. */
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  font-weight: 700; color: var(--muted);
+}
+
+/* The count as a pill rather than "(15)". Same surface ladder as the
+   other pills (§19's --pill-bg sits between a card edge and a field), so
+   it reads as a label and not as something tappable. Tabular figures so
+   "5 of 18" does not jiggle as the filter narrows. */
+.count {
+  background: var(--pill-bg); border: 1px solid var(--pill-line);
+  color: var(--text); border-radius: 999px;
+  padding: 1px 7px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0; text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- invite bar ---------- */
+
+/* First thing in the page, because it is what Sam hands to people and it
+   was sitting under 58 cards. A bar and not a section: the heading is
+   sr-only and the button is the only thing with weight, so your own card
+   is still what the eye lands on. Dashed, so it reads as a utility strip
+   rather than one more person. */
+.invite-bar {
+  border: 1px dashed var(--field-line); border-radius: var(--radius);
+  padding: 11px 13px 12px; margin-top: 4px;
+}
+.invite-bar button { margin-top: 0; }
+.invite-bar .hint { margin-top: 7px; }
+.invite-bar input.search { margin-top: 8px; }
+
 /* The filter disclosure. The chips themselves are unchanged (§19); this
    is only the container that keeps them out of the way until asked for. */
 .filter-head { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; }

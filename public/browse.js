@@ -500,8 +500,11 @@ function applyFilter() {
   }
 
   const total = everyoneCards.length;
-  const head = document.querySelector('#everyone-head');
-  if (head) head.textContent = `Everyone (${matched}${matched !== total ? ` of ${total}` : ''})`;
+  // Only the count, never the heading: the heading now holds a static
+  // label plus this element, and writing textContent on the parent would
+  // delete the pill on the first keystroke.
+  const countEl = document.querySelector('#everyone-count');
+  if (countEl) countEl.textContent = matched === total ? String(total) : `${matched} of ${total}`;
 
   const none = document.querySelector('#no-match');
   if (none) none.hidden = matched > 0;
@@ -555,38 +558,69 @@ function render() {
 
   const near = peopleNearMe(mine, already);
 
+  // SECTIONS, not one continuous run of cards. Every block used to look
+  // identical -- white card, grey gap, white card -- with an 11px muted
+  // label the only thing marking where "Your people" ended and "People
+  // near you" began. On a 58-person roster that reads as one endless
+  // list.
+  //
+  // Each block is now a <section> with a header band that sticks to the
+  // top of the viewport while that section is on screen, which is the
+  // iOS table-view behaviour and the reason not to stop at divider
+  // lines: scrolling the roster, the header tells you which group you
+  // are looking at instead of leaving you to remember.
+  const count = n => (n ? `<span class="count">${n}</span>` : '');
+
   app.innerHTML = `
-    ${mine
-      ? `<h2>You</h2>${card(mine, { mine: true })}`
-      : `<h2>You</h2><div class="card"><div class="meta">You're signed in but not on the roster right now.</div>
-         <a href="me.html" class="btn">Add me back</a></div>`}
+    <!-- Invite first, because it is the thing Sam needs to hand to people
+         and it was buried under 58 cards. Deliberately a compact bar and
+         not a full section: the eye should still land on your own card. -->
+    <div class="invite-bar">
+      <h2 class="sr-only">Invite someone</h2>
+      <button class="ghost" id="invite">Copy invite link</button>
+      <p class="hint">Send this one &mdash; the link in your address bar loses the password.</p>
+    </div>
 
-    <h2>Your people ${saved.length ? `(${saved.length})` : ''}</h2>
-    ${saved.length
-      ? saved.map(s => savedCard(s, mine)).join('')
-      : `<p class="empty">Nobody yet. Tap a star to add someone you want to find on race morning.</p>`}
+    <section class="sec">
+      <h2 class="sec-head">You</h2>
+      ${mine
+        ? card(mine, { mine: true })
+        : `<div class="card"><div class="meta">You're signed in but not on the roster right now.</div>
+           <a href="me.html" class="btn">Add me back</a></div>`}
+    </section>
 
-    ${mine ? `<h2>People near you ${near.shown.length ? `(${near.shown.length})` : ''}</h2>
+    <section class="sec">
+      <h2 class="sec-head">Your people ${count(saved.length)}</h2>
+      ${saved.length
+        ? saved.map(s => savedCard(s, mine)).join('')
+        : `<p class="empty">Nobody yet. Tap a star to add someone you want to find on race morning.</p>`}
+    </section>
+
+    ${mine ? `<section class="sec">
+      <h2 class="sec-head">People near you ${count(near.shown.length)}</h2>
       ${near.shown.length
         ? near.shown.map(x => card(x.r, { tag: x.hit.label })).join('') +
           (near.hidden ? `<p class="empty">${near.hidden} more share your wave — filter Everyone below to see them.</p>` : '')
-        : `<p class="empty">${esc(whyNobodyNear(mine))}</p>`}` : ''}
+        : `<p class="empty">${esc(whyNobodyNear(mine))}</p>`}
+    </section>` : ''}
 
-    <h2 id="everyone-head"></h2>
-    <div id="filters">${filterBar()}</div>
-    <input class="search" id="q" aria-label="Search name or bib"
-           placeholder="Search name or bib" value="${esc(filter.q)}">
-    <div id="everyone"></div>
-    <p class="empty" id="no-match" hidden>Nobody matches that.</p>
-    <button class="ghost" id="show-all" hidden aria-controls="everyone"></button>
+    <section class="sec">
+      <!-- The label is static and the count is its own element, because
+           applyFilter() rewrites the count on every keystroke and
+           setting textContent on the heading would eat the pill. -->
+      <h2 class="sec-head" id="everyone-head">Everyone <span class="count" id="everyone-count"></span></h2>
+      <div id="filters">${filterBar()}</div>
+      <input class="search" id="q" aria-label="Search name or bib"
+             placeholder="Search name or bib" value="${esc(filter.q)}">
+      <div id="everyone"></div>
+      <p class="empty" id="no-match" hidden>Nobody matches that.</p>
+      <button class="ghost" id="show-all" hidden aria-controls="everyone"></button>
+    </section>
 
-    ${gaps.length ? `<h2>Still missing info</h2>
-      <p class="empty">${gaps.length} ${gaps.length === 1 ? 'person hasn\'t' : 'people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>` : ''}
-
-    <h2>Invite someone</h2>
-    <p class="empty">Sending the link from your address bar does not work &mdash; the
-       password is stripped out of it the moment you arrive. Use this instead.</p>
-    <button class="ghost" id="invite">Copy invite link</button>
+    ${gaps.length ? `<section class="sec">
+      <h2 class="sec-head">Still missing info ${count(gaps.length)}</h2>
+      <p class="empty">${gaps.length === 1 ? 'This person hasn\'t' : 'These people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>
+    </section>` : ''}
 
     <button class="ghost" id="signout">Sign out of this device</button>`;
 
