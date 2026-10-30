@@ -46,12 +46,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       ).bind(who.runnerKey),
       env.DB.prepare(`
         INSERT INTO fct_runner_start
-          (runner_key, bib_number, color_key, wave_key, corral_key, transport_key, depart_time_local, meetup_note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          (runner_key, bib_number, color_key, wave_key, corral_key, transport_key, depart_time_local,
+           meetup_note, participant_role, goal_time_seconds, has_sign, has_support)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         who.runnerKey, value.bib_number, value.color_key, value.wave_key,
         value.corral_key, value.transport_key, value.depart_time_local, value.meetup_note,
+        value.participant_role, value.goal_time_seconds, value.has_sign, value.has_support,
       ),
+      // Attached by subselect to whichever row is current once the
+      // insert above has run, so the miles land on the NEW row and the
+      // superseded one keeps the set it had -- same versioning the rest
+      // of the assignment gets.
+      ...value.spectator_miles.map(mile => env.DB.prepare(`
+        INSERT INTO fct_spectator_mile (runner_start_key, mile_marker)
+        SELECT runner_start_key, ?2 FROM fct_runner_start
+         WHERE runner_key = ?1 AND is_current = 1
+      `).bind(who.runnerKey, mile)),
     ]);
   } catch (e) {
     return err(friendlyDbError(e instanceof Error ? e.message : String(e), value), 409);

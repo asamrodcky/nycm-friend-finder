@@ -49,6 +49,76 @@ export function clock(hhmm) {
 
 export const dash = v => (v === null || v === undefined || v === '' ? '—' : v);
 
+// ---------- projected splits ----------
+
+/** 26.2 miles, the only constant here that is not a guess. */
+export const MARATHON_MILES = 26.2;
+
+/** 13500 -> '3:45'. Goal times are stored in seconds and shown as h:mm. */
+export function goalLabel(seconds) {
+  if (!seconds) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return m === 60 ? `${h + 1}:00` : `${h}:${String(m).padStart(2, '0')}`;
+}
+
+/** '3:45' or '3:45:30' -> 13500. Returns null if it is not a time. */
+export function parseGoal(text) {
+  const parts = String(text ?? '').trim().split(':');
+  if (parts.length < 2 || parts.length > 3 || parts.some(x => !/^\d+$/.test(x))) return null;
+  const [h, m, sec = '0'] = parts;
+  const total = Number(h) * 3600 + Number(m) * 60 + Number(sec);
+  return Number(m) > 59 || Number(sec) > 59 ? null : total;
+}
+
+/**
+ * Where somebody is expected to be, mile by mile.
+ *
+ * EVEN PACING, AND THE LABEL HAS TO SAY SO. A real New York split is
+ * nothing like linear -- the Verrazzano goes up for two miles, First
+ * Avenue is downhill and too fast, and the Fifth Avenue climb at 23 is
+ * where the wheels come off. Modelling that properly needs per-runner
+ * data nobody here has.
+ *
+ * So this does the honest simple thing rather than the dishonest clever
+ * one. A spectator wants to know whether to be at mile 18 at 11:30 or
+ * 12:30, and even pacing answers that to within a few minutes. A curve
+ * fitted to assumptions would be wrong by about as much while looking
+ * authoritative. Anything built on this must show it as an estimate.
+ *
+ * @param goalSeconds target finish time
+ * @param startLocal  the wave's start, 'HH:MM', or null if unknown
+ * @param miles       which markers to return
+ * @returns [{ mile, elapsed, clock }] -- clock is null without a start
+ */
+export function projectSplits(goalSeconds, startLocal, miles) {
+  if (!goalSeconds) return [];
+  const startSec = startLocal
+    ? Number(startLocal.split(':')[0]) * 3600 + Number(startLocal.split(':')[1]) * 60
+    : null;
+
+  return miles.map(mile => {
+    const elapsed = Math.round(goalSeconds * (mile / MARATHON_MILES));
+    let clock = null;
+    if (startSec !== null) {
+      // Wraps past midnight only in theory, but modulo costs nothing and
+      // a 25-hour clock reading would be worse than wrong.
+      const at = (startSec + elapsed) % 86400;
+      const hh = Math.floor(at / 3600), mm = Math.floor((at % 3600) / 60);
+      clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    }
+    return { mile, elapsed, clock };
+  });
+}
+
+/** 6699 -> '1:51:39'. Elapsed time, always h:mm:ss. */
+export function elapsedLabel(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 /**
  * The start assignment as three discrete facts: colour, wave, corral.
  *

@@ -22,7 +22,8 @@
 // people who would never see each other. Sharing a wave across
 // different villages does still count -- see sameWave.
 
-import { api, store, KEY, esc, icon, clock, startFacts, transportIcon, watchForUpdates } from './app.js';
+import { api, store, KEY, esc, icon, clock, startFacts, transportIcon, watchForUpdates,
+         projectSplits, elapsedLabel, goalLabel } from './app.js';
 import { ensureAccess } from './gate.js';
 
 const app = document.querySelector('#app');
@@ -212,8 +213,19 @@ const openPill = key =>
 const when = (key, hhmm) =>
   `<span class="when"><span class="when-k">${key}</span> ${clock(hhmm)}</span>`;
 
+/** The miles a spectator listed, as badges. */
+function spectatorBadges(r) {
+  const miles = String(r.spectator_miles || '').split(',').filter(Boolean);
+  const bits = miles.map(m => `<span class="pill">Mile ${esc(m)}</span>`);
+  if (r.has_sign)    bits.push('<span class="pill">Sign / cowbell</span>');
+  if (r.has_support) bits.push('<span class="pill">Gels / hydration</span>');
+  return bits.length ? bits.join(' ')
+    : '<span class="pill open">no miles yet<span class="sr-only"> set</span></span>';
+}
+
 function card(r, { mine = false, tag = null } = {}) {
   const isSaved = savedKeys().has(r.runner_key);
+  const spectator = r.participant_role === 'spectator';
   const facts = startFacts(r);
   const anyStart = facts.some(f => f.label);
 
@@ -232,14 +244,15 @@ function card(r, { mine = false, tag = null } = {}) {
           ${r.bib_number ? ` <span class="bib">#${esc(r.bib_number)}</span>` : ''}
         </div>
         ${tag ? `<span class="tag match">${esc(tag)}</span>` : ''}
-        ${r.is_complete || tag ? '' : `<span class="badge">${needs}</span>`}
+        ${r.is_complete || tag ? '' : `<span class="badge">${spectator ? 'needs a mile' : needs}</span>`}
         ${mine ? '' : `<button class="star${isSaved ? ' on' : ''}" data-save="${r.runner_key}"
              aria-label="${isSaved ? `Remove ${esc(r.display_name)} from my people` : `Save ${esc(r.display_name)}`}"
              aria-pressed="${isSaved}">${icon('star', { filled: isSaved })}</button>`}
       </div>
 
       <div class="facts">
-        ${anyStart
+        ${spectator ? spectatorBadges(r) : ''}
+        ${spectator ? '' : anyStart
           // Joined on a space, not nothing. Flex ignores whitespace between
           // items so the layout is unchanged, but it stops assistive tech
           // that flattens adjacent inline text from reading "OrangeWave 2".
@@ -269,12 +282,47 @@ function card(r, { mine = false, tag = null } = {}) {
 // moment you starred them ("same wave + ride" becoming "same wave"),
 // which looks like the app changed its mind. The roster row carries the
 // dimension keys the overlap needs, so look them up there.
+/**
+ * Projected mile times for somebody you follow.
+ *
+ * Only reachable from here, which is the point: the goal time this is
+ * built from is followers-only (/api/runners strips it for everybody
+ * else), so the table can only ever be drawn for a person you have
+ * actually starred.
+ *
+ * Every three miles rather than all 26. A spectator picks a corner, and
+ * nine rows can be read at a glance where twenty-six is a wall.
+ */
+function splitsTable(s) {
+  if (!s.goal_time_seconds) return '';
+  const miles = [3, 6, 9, 12, 15, 18, 21, 24, 26];
+  const rows = projectSplits(s.goal_time_seconds, s.start_time_local, miles);
+  if (!rows.length) return '';
+
+  return `
+    <table class="splits">
+      <caption>Estimate only &mdash; even pacing from a ${esc(goalLabel(s.goal_time_seconds))}
+        goal${s.start_time_local ? `, off a ${esc(clock(s.start_time_local))} start` : ''}.
+        A real New York split is nothing like even.</caption>
+      <thead><tr><th scope="col">Mile</th><th scope="col">Elapsed</th>
+        ${rows[0].clock ? '<th scope="col">Clock</th>' : ''}</tr></thead>
+      <tbody>${rows.map(x => `
+        <tr><td>${x.mile}</td><td>${esc(elapsedLabel(x.elapsed))}</td>
+            ${x.clock ? `<td class="clock">${esc(clock(x.clock))}</td>` : ''}</tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
 function savedCard(s, mine) {
   const live = roster.find(r => r.runner_key === s.saved_runner_key);
   const hit = live ? overlap(mine, live) : null;
-  return card(live ?? { ...s, runner_key: s.saved_runner_key }, {
+  const base = card(live ?? { ...s, runner_key: s.saved_runner_key }, {
     tag: hit ? hit.label : (live ? 'no overlap yet' : 'not on the roster'),
   });
+  // Spliced in before the card closes rather than appended after it, so
+  // the table reads as part of that person rather than a loose block.
+  const splits = splitsTable(s);
+  return splits ? base.replace(/<\/div>\s*$/, `${splits}</div>`) : base;
 }
 
 /**

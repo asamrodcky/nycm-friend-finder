@@ -44,17 +44,41 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       ).bind(value.display_name, value.instagram, hash, salt),
       env.DB.prepare(`
         INSERT INTO fct_runner_start
-          (runner_key, bib_number, color_key, wave_key, corral_key, transport_key, depart_time_local, meetup_note)
-        VALUES (last_insert_rowid(), ?, ?, ?, ?, ?, ?, ?)
+          (runner_key, bib_number, color_key, wave_key, corral_key, transport_key, depart_time_local,
+           meetup_note, participant_role, goal_time_seconds, has_sign, has_support)
+        VALUES (last_insert_rowid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         value.bib_number, value.color_key, value.wave_key, value.corral_key,
         value.transport_key, value.depart_time_local, value.meetup_note,
+        value.participant_role, value.goal_time_seconds, value.has_sign, value.has_support,
       ),
     ]);
     const row = await env.DB.prepare(
       'SELECT runner_key FROM dim_runner ORDER BY runner_key DESC LIMIT 1',
     ).first<{ runner_key: number }>();
     runnerKey = row?.runner_key ?? null;
+
+    // Miles go in a SECOND batch, keyed on the runner_key we just read
+    // back, rather than inside the first one.
+    //
+    // The obvious version -- a subselect matching on display_name --
+    // is wrong on this roster specifically: §29 found two pairs of
+    // people sharing a display name, so it could attach one person's
+    // miles to another person's row. Nothing inside a single D1 batch
+    // can see the key the batch itself is generating, so the choice is
+    // a correct key in a second round trip or a racy match in one.
+    //
+    // What it costs: if this batch fails after the first succeeded, the
+    // spectator exists with no miles. That is is_complete = 0, which
+    // the UI already shows as "still missing info" and which they fix
+    // by editing. Recoverable, not corrupt.
+    if (runnerKey && value.spectator_miles.length) {
+      await env.DB.batch(value.spectator_miles.map(mile => env.DB.prepare(`
+        INSERT INTO fct_spectator_mile (runner_start_key, mile_marker)
+        SELECT runner_start_key, ?2 FROM fct_runner_start
+         WHERE runner_key = ?1 AND is_current = 1
+      `).bind(runnerKey, mile)));
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (message.includes('fct_runner_start.bib_number')) {

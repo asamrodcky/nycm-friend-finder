@@ -5,7 +5,7 @@
 // form that demands everything would make those people invent data or
 // give up. Blank is a legitimate answer and stays blank.
 
-import { clock, esc, icon } from './app.js';
+import { clock, esc, icon, goalLabel, parseGoal } from './app.js';
 
 export function entryFields(meta, cur = {}) {
   const chips = meta.colors.map(c => `
@@ -17,10 +17,30 @@ export function entryFields(meta, cur = {}) {
     `<option value="">— not sure yet —</option>` +
     rows.map(r => `<option value="${r[valueKey]}"${String(r[valueKey]) === String(selected) ? ' selected' : ''}>${esc(labelFn(r))}</option>`).join('');
 
+  const role = cur.participant_role === 'spectator' ? 'spectator' : 'runner';
+  const onMiles = new Set(
+    String(cur.spectator_miles || '').split(',').filter(Boolean).map(Number));
+
+  // 1..26. Mile 26 rather than 26.2 because a spectator standing at the
+  // finish is standing at mile 26 as far as finding each other goes,
+  // and a fractional chip would be the only odd one in the row.
+  const mileChips = Array.from({ length: 26 }, (_, i) => i + 1).map(m => `
+    <button type="button" class="chip mile" data-mile="${m}"
+            aria-pressed="${onMiles.has(m)}">${m}</button>`).join('');
+
   return `
+    <label id="f-role-label">Are you running or spectating?</label>
+    <div class="chips" id="f-role" role="group" aria-labelledby="f-role-label">
+      <button type="button" class="chip" data-role="runner"
+              aria-pressed="${role === 'runner'}">I'm running</button>
+      <button type="button" class="chip" data-role="spectator"
+              aria-pressed="${role === 'spectator'}">I'm spectating</button>
+    </div>
+
     <label for="f-name">Name <span class="hint">how the group knows you</span></label>
     <input id="f-name" maxlength="60" value="${esc(cur.display_name || '')}" autocomplete="name">
 
+    <div id="f-runner-only">
     <label for="f-bib">Bib number <span class="hint">leave blank if you don't have it yet</span></label>
     <input id="f-bib" inputmode="numeric" maxlength="20" value="${esc(cur.bib_number || '')}">
 
@@ -34,6 +54,27 @@ export function entryFields(meta, cur = {}) {
     <select id="f-corral">${opts(meta.corrals, 'corral_key', c => `Corral ${c.corral_letter}`, cur.corral_key)}</select>
 
     <div class="derived" id="f-derived" role="status" aria-live="polite"></div>
+
+    <label for="f-goal">Goal finish time <span class="hint">optional — h:mm, like 3:45</span></label>
+    <input id="f-goal" inputmode="numeric" maxlength="8" placeholder="3:45"
+           aria-describedby="f-goal-hint" value="${esc(goalLabel(cur.goal_time_seconds) || '')}">
+    <div class="hint" id="f-goal-hint">Only people who follow you can see this. It is what
+      your projected mile times are built from.</div>
+    </div>
+
+    <div id="f-spectator-only" hidden>
+      <label id="f-miles-label">Which miles will you be at?
+        <span class="hint">pick up to 8 — tap again to remove</span></label>
+      <div class="chips miles" id="f-miles" role="group" aria-labelledby="f-miles-label">${mileChips}</div>
+
+      <label id="f-bring-label">Bringing anything?</label>
+      <div class="chips" id="f-bring" role="group" aria-labelledby="f-bring-label">
+        <button type="button" class="chip" data-bring="sign"
+                aria-pressed="${cur.has_sign ? 'true' : 'false'}">Sign / cowbell</button>
+        <button type="button" class="chip" data-bring="support"
+                aria-pressed="${cur.has_support ? 'true' : 'false'}">Gels / hydration</button>
+      </div>
+    </div>
 
     <label for="f-transport">Getting to the start</label>
     <select id="f-transport">${opts(meta.transports, 'transport_key', t => t.transport_label, cur.transport_key)}</select>
@@ -56,13 +97,60 @@ export function entryFields(meta, cur = {}) {
 /** Wires colour chips, the derived start time, and the departure guard. */
 export function wireEntryFields(root, meta) {
   const $ = id => root.querySelector('#' + id);
-  let colorKey = Number(root.querySelector('.chip[aria-pressed="true"]')?.dataset.color) || null;
+  let colorKey = Number(root.querySelector('#f-colors .chip[aria-pressed="true"]')?.dataset.color) || null;
+  let role = root.querySelector('#f-role .chip[aria-pressed="true"]')?.dataset.role || 'runner';
+
+  const pressed = sel => [...root.querySelectorAll(sel)].filter(b => b.getAttribute('aria-pressed') === 'true');
+  const toggle  = btn => btn.setAttribute('aria-pressed',
+    String(btn.getAttribute('aria-pressed') !== 'true'));
+
+  // Swapping role swaps which half of the form exists. Doing it by
+  // hiding rather than rebuilding keeps anything already typed in the
+  // shared fields -- name, transport, what you are wearing -- which
+  // someone who picks the wrong chip first would otherwise lose.
+  function paintRole() {
+    root.querySelector('#f-runner-only').hidden    = role !== 'runner';
+    root.querySelector('#f-spectator-only').hidden = role !== 'spectator';
+    root.querySelectorAll('#f-role .chip').forEach(b =>
+      b.setAttribute('aria-pressed', String(b.dataset.role === role)));
+    // The colour/wave/corral block belongs to runners too, but it sits
+    // outside f-runner-only because the derived start-time box is wired
+    // to it. Hide the labels and controls together so a spectator is
+    // never asked for a corral -- being asked was the whole problem.
+    for (const id of ['f-colors-label', 'f-colors', 'f-wave', 'f-corral', 'f-derived']) {
+      const el = root.querySelector('#' + id);
+      if (el) el.hidden = role !== 'runner';
+      const lab = root.querySelector(`label[for="${id}"]`);
+      if (lab) lab.hidden = role !== 'runner';
+    }
+  }
+
+  root.querySelector('#f-role').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    role = btn.dataset.role;
+    paintRole();
+  });
+
+  root.querySelector('#f-miles').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    if (btn.getAttribute('aria-pressed') !== 'true' && pressed('#f-miles .chip').length >= 8) return;
+    toggle(btn);
+  });
+
+  root.querySelector('#f-bring').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (btn) toggle(btn);
+  });
 
   $('f-colors').addEventListener('click', e => {
     const btn = e.target.closest('.chip');
     if (!btn) return;
     colorKey = Number(btn.dataset.color);
-    root.querySelectorAll('.chip').forEach(b =>
+    // Scoped to this group. It used to clear every .chip on the form,
+    // which with mile and role chips now present would wipe them too.
+    root.querySelectorAll('#f-colors .chip').forEach(b =>
       b.setAttribute('aria-pressed', String(b === btn)));
     paint();
   });
@@ -94,8 +182,15 @@ export function wireEntryFields(root, meta) {
   $('f-wave').addEventListener('change', paint);
   $('f-transport').addEventListener('change', guardDeparture);
   paint();
+  paintRole();
 
   return () => ({
+    participant_role:  role,
+    goal_time_seconds: role === 'runner' ? parseGoal($('f-goal').value) : null,
+    spectator_miles:   role === 'spectator'
+      ? pressed('#f-miles .chip').map(b => Number(b.dataset.mile)) : [],
+    has_sign:    role === 'spectator' && !!pressed('#f-bring .chip[data-bring="sign"]').length ? 1 : 0,
+    has_support: role === 'spectator' && !!pressed('#f-bring .chip[data-bring="support"]').length ? 1 : 0,
     display_name:      $('f-name').value.trim(),
     bib_number:        $('f-bib').value.trim() || null,
     color_key:         colorKey,

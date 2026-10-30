@@ -385,6 +385,25 @@ h2.lede {
 .why p:last-child { margin-bottom: 0; }
 .why .why-last { font-weight: 500; }
 
+/* Mile chips. Twenty-six of them, so they have to pack tighter than the
+   colour chips or they are five rows on a phone. Fixed min-width keeps
+   the single and double digits in an even grid. */
+.chips.miles { gap: 5px; }
+.chip.mile { min-width: 38px; padding: 7px 6px; text-align: center;
+             font-variant-numeric: tabular-nums; }
+
+/* Projected splits for somebody you follow. Tabular numerals so the
+   times form columns you can scan down. */
+.splits { width: 100%; border-collapse: collapse; margin-top: 8px;
+          font-variant-numeric: tabular-nums; font-size: 14px; }
+.splits th, .splits td { text-align: left; padding: 5px 8px 5px 0; }
+.splits th { color: var(--muted); font-weight: 600; font-size: 11px;
+             text-transform: uppercase; letter-spacing: 0.06em; }
+.splits tr + tr td { border-top: 1px solid var(--line); }
+.splits td.clock { font-weight: 600; }
+.splits caption { caption-side: bottom; color: var(--muted); font-size: 12px;
+                  text-align: left; padding-top: 7px; }
+
 /* The filter disclosure. The chips themselves are unchanged (§19); this
    is only the container that keeps them out of the way until asked for. */
 .filter-head { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; }

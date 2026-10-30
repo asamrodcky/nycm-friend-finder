@@ -14,9 +14,71 @@ export interface RunnerInput {
   depart_time_local: string | null;
   meetup_note: string | null;
   instagram: string | null;
+  participant_role: 'runner' | 'spectator';
+  goal_time_seconds: number | null;
+  spectator_miles: number[];
+  has_sign: 0 | 1;
+  has_support: 0 | 1;
 }
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Mirrors the CHECK in migration 0008: 25 minutes to 13 hours. */
+const GOAL_MIN = 1500, GOAL_MAX = 46800;
+
+/**
+ * A goal finish, accepted as 'h:mm' or 'h:mm:ss' and stored as seconds.
+ *
+ * Bounded on both ends on purpose. The projection built from this reads
+ * as authoritative -- a spectator will stand on a corner because of it
+ * -- so a fat-fingered "3:450" has to be refused here rather than
+ * turned into a confident wrong answer at mile 18.
+ */
+function goalSeconds(raw: unknown, errors: string[]): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number') {
+    if (!Number.isInteger(raw) || raw < GOAL_MIN || raw > GOAL_MAX) {
+      errors.push('goal time must be between 25 minutes and 13 hours');
+      return null;
+    }
+    return raw;
+  }
+  const parts = String(raw).trim().split(':');
+  if (parts.length < 2 || parts.length > 3 || parts.some(x => !/^\d+$/.test(x))) {
+    errors.push(`"${String(raw)}" is not a time I understand -- use h:mm, like 3:45`);
+    return null;
+  }
+  const [h, m, sec = '0'] = parts;
+  if (Number(m) > 59 || Number(sec) > 59) {
+    errors.push('minutes and seconds in a goal time have to be under 60');
+    return null;
+  }
+  const total = Number(h) * 3600 + Number(m) * 60 + Number(sec);
+  if (total < GOAL_MIN || total > GOAL_MAX) {
+    errors.push('goal time must be between 25 minutes and 13 hours');
+    return null;
+  }
+  return total;
+}
+
+/** Mile markers a spectator will be at. Deduplicated and sorted. */
+function spectatorMiles(raw: unknown, errors: string[]): number[] {
+  if (raw === null || raw === undefined) return [];
+  if (!Array.isArray(raw)) { errors.push('miles must be a list'); return []; }
+  const out = new Set<number>();
+  for (const v of raw) {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1 || n > 26) {
+      errors.push(`"${String(v)}" is not a mile on this course -- pick 1 to 26`);
+      return [];
+    }
+    out.add(n);
+  }
+  if (out.size > 8) { errors.push('pick at most 8 miles'); return []; }
+  return [...out].sort((a, b) => a - b);
+}
+
+const flag = (raw: unknown): 0 | 1 => (raw === true || raw === 1 || raw === '1' ? 1 : 0);
 
 /** '' and whitespace collapse to null: an unknown bib must never be ''. */
 function nullableText(v: unknown, max: number, field: string, errors: string[]): string | null {
@@ -113,11 +175,35 @@ export function parseRunner(body: unknown): { value?: RunnerInput; errors: strin
     depart_time_local,
     meetup_note:       nullableText(b.meetup_note, 140, 'outfit note', errors),
     instagram:         instagramHandle(b.instagram, errors),
+    participant_role:  b.participant_role === 'spectator' ? 'spectator' : 'runner',
+    goal_time_seconds: goalSeconds(b.goal_time_seconds, errors),
+    spectator_miles:   spectatorMiles(b.spectator_miles, errors),
+    has_sign:          flag(b.has_sign),
+    has_support:       flag(b.has_support),
   };
 
   // A departure time with no vehicle is a time for nothing.
   if (value.depart_time_local && !value.transport_key) {
     errors.push('pick how you are getting there before setting a departure time');
+  }
+
+  // The two roles are not the same shape, and quietly storing the other
+  // role's fields is how a spectator ends up on the roster as a runner
+  // with everything missing -- the exact failure this feature exists to
+  // remove. So each role keeps only what belongs to it.
+  if (value.participant_role === 'spectator') {
+    value.bib_number = null;
+    value.color_key = null;
+    value.wave_key = null;
+    value.corral_key = null;
+    value.goal_time_seconds = null;
+    if (!value.spectator_miles.length) {
+      errors.push('pick at least one mile you will be watching from');
+    }
+  } else {
+    value.spectator_miles = [];
+    value.has_sign = 0;
+    value.has_support = 0;
   }
 
   return errors.length ? { errors } : { value, errors };
