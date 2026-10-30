@@ -385,12 +385,39 @@ h2.lede {
 .why p:last-child { margin-bottom: 0; }
 .why .why-last { font-weight: 500; }
 
-/* Mile chips. Twenty-six of them, so they have to pack tighter than the
-   colour chips or they are five rows on a phone. Fixed min-width keeps
-   the single and double digits in an even grid. */
-.chips.miles { gap: 5px; }
-.chip.mile { min-width: 38px; padding: 7px 6px; text-align: center;
+/* Mile chips. A GRID, not a flex row -- .chips is display:flex with no
+   wrap, and twenty-six chips at a 38px floor want ~1110px, so on a 358px
+   phone they ran straight off the side of the page. auto-fill reflows
+   the block by itself: seven across at 390px, more on a desktop, and it
+   never overflows because the track floor and the gap are the only
+   numbers involved. */
+.chips.miles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 5px;
+}
+.chip.mile { min-width: 0; padding: 7px 4px; text-align: center;
              font-variant-numeric: tabular-nums; }
+
+/* THE PRESSED STATE ABOVE ONLY WORKS FOR COLOUR CHIPS. --chip is set
+   inline per colour and nothing else defines it, so on a mile or a
+   "bringing anything" chip `background: var(--chip)` is invalid and
+   dropped -- leaving color:#fff and a transparent border on a chip whose
+   background is still var(--card). In light mode that is white text on a
+   white box: a selected mile was invisible. Dark mode is white on a dark
+   card, which is why it looked fine.
+   These fill with the accent instead, the same pairing button.mini.on
+   uses, which inverts cleanly in both themes. */
+.chips.miles .chip[aria-pressed="true"],
+#f-bring .chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+/* No tick on a mile chip: "✓ 26" does not fit a 40px track, and unlike
+   the colour picker the fill here is not the only thing carrying the
+   meaning -- the number stays legible either way. */
+.chips.miles .chip[aria-pressed="true"]::before { content: none; }
 
 /* Projected splits for somebody you follow. Tabular numerals so the
    times form columns you can scan down. */

@@ -76,12 +76,20 @@ export function entryFields(meta, cur = {}) {
       </div>
     </div>
 
-    <label for="f-transport">Getting to the start</label>
-    <select id="f-transport">${opts(meta.transports, 'transport_key', t => t.transport_label, cur.transport_key)}</select>
+    <!-- RUNNERS ONLY, and it took a spectator reading it to see why. Every
+         option in here is a way to reach the Staten Island start: the
+         ferry, the Verrazzano buses, a charity coach. A spectator going to
+         mile 18 in Manhattan is not "getting to the start" and has no
+         departure time, so asking was the same mistake as asking them for
+         a corral. Wrapped so paintRole can hide the pair together. -->
+    <div id="f-getting-there">
+      <label for="f-transport">Getting to the start</label>
+      <select id="f-transport">${opts(meta.transports, 'transport_key', t => t.transport_label, cur.transport_key)}</select>
 
-    <label for="f-departs">Departure time</label>
-    <select id="f-departs" aria-describedby="f-departs-hint">${opts(meta.departure_slots, 'value', s => s.label, cur.depart_time_local)}</select>
-    <div class="hint" id="f-departs-hint"></div>
+      <label for="f-departs">Departure time</label>
+      <select id="f-departs" aria-describedby="f-departs-hint">${opts(meta.departure_slots, 'value', s => s.label, cur.depart_time_local)}</select>
+      <div class="hint" id="f-departs-hint"></div>
+    </div>
 
     <label for="f-note">What you'll be wearing <span class="hint">optional — throwaway layers too</span></label>
     <input id="f-note" maxlength="140" placeholder="grey puffy over orange singlet, neon shoes"
@@ -117,7 +125,8 @@ export function wireEntryFields(root, meta) {
     // outside f-runner-only because the derived start-time box is wired
     // to it. Hide the labels and controls together so a spectator is
     // never asked for a corral -- being asked was the whole problem.
-    for (const id of ['f-colors-label', 'f-colors', 'f-wave', 'f-corral', 'f-derived']) {
+    for (const id of ['f-colors-label', 'f-colors', 'f-wave', 'f-corral', 'f-derived',
+                      'f-getting-there']) {
       const el = root.querySelector('#' + id);
       if (el) el.hidden = role !== 'runner';
       const lab = root.querySelector(`label[for="${id}"]`);

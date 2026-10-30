@@ -197,6 +197,14 @@ export function parseRunner(body: unknown): { value?: RunnerInput; errors: strin
     value.wave_key = null;
     value.corral_key = null;
     value.goal_time_seconds = null;
+    // Transport is "how you reach the Staten Island start" -- the ferry,
+    // the Verrazzano buses, a charity coach. A spectator is not going
+    // there, so the form stops asking and anything a role switch left
+    // behind is dropped here rather than stored as a journey nobody is
+    // making. Clearing it server-side matters because somebody can fill
+    // the runner half in, switch to spectating and submit.
+    value.transport_key = null;
+    value.depart_time_local = null;
     if (!value.spectator_miles.length) {
       errors.push('pick at least one mile you will be watching from');
     }
