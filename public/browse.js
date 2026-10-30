@@ -277,9 +277,51 @@ function savedCard(s, mine) {
   });
 }
 
+/**
+ * Puts text on the clipboard, reporting honestly whether it worked.
+ *
+ * THE RACE IS NOT PARANOIA. navigator.clipboard.writeText does not
+ * always settle: measured here pending past three seconds with the
+ * document focused and visible, and WebKit drops the user-gesture
+ * grant across the `await` on the fetch before it. An un-settled
+ * promise is the one outcome a bare `await` cannot survive -- the
+ * button stays disabled wearing its original label, so the control
+ * whose entire job is to fix sharing silently does nothing, for good,
+ * until the page is reloaded.
+ *
+ * A timeout turns that into a plain "it did not copy", which the
+ * caller already knows how to handle by showing the link to copy by
+ * hand. 1200ms is far longer than a real write and short enough that
+ * the fallback feels like a response to the tap.
+ */
+async function copyToClipboard(text) {
+  try {
+    await Promise.race([
+      navigator.clipboard.writeText(text),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('clipboard did not respond')), 1200)),
+    ]);
+    return true;
+  } catch { return false; }
+}
+
 // ---------- filters ----------
 
-const filter = { color: null, wave: null, transport: null, q: '' };
+// Whether the filter panel is showing. Module scope so it survives the
+// re-render that replaces #app.
+let filtersOpen = false;
+
+// Sets, not scalars. Within a dimension the chips are OR ("Orange or
+// Pink"); across dimensions they are AND ("Orange, in wave 2"). The old
+// scalars could only ever express one colour at a time.
+const filter = { color: new Set(), wave: new Set(), transport: new Set(), q: '' };
+
+/** True when anything at all is narrowing the list. */
+const isNarrowed = () =>
+  !!filter.q.trim() || filter.color.size || filter.wave.size || filter.transport.size;
+
+/** How many chips are lit, for the summary label. */
+const activeCount = () => filter.color.size + filter.wave.size + filter.transport.size;
 
 function filterBar() {
   const colors = [...new Map(roster.filter(r => r.color_name).map(r => [r.color_name, r.color_hex])).entries()];
@@ -297,22 +339,41 @@ function filterBar() {
              data-v="${value === null ? 'null' : esc(value)}"
              aria-pressed="${filter[type] === value}" ${style}>${esc(label)}</button>`;
 
+  // BEHIND A DISCLOSURE, not laid out flat. Three always-on chip rows
+  // were about five rows of vertical space before a single person was
+  // visible -- on a phone the filter WAS the screen. Collapsed by
+  // default, and the button carries a count so the state is legible
+  // without opening it.
+  //
+  // Deliberately not <select multiple>: native multi-selects are
+  // genuinely bad on iOS, and swapping to them would throw away the
+  // aria-pressed / role="group" / labelled-group work from §19. The
+  // chips are unchanged; only their container is new.
   return `
-    <div class="filters" role="group" aria-label="Filter by start colour">
-      ${btn('color', null, 'All')}
-      ${colors.map(([name, hex]) => btn('color', name, name, `style="border-color:${hex}"`)).join('')}
+    <div class="filter-head">
+      <button id="filter-toggle" class="mini" aria-expanded="${filtersOpen}"
+              aria-controls="filter-panel">Filter</button>
+      <button id="filter-clear" class="mini" ${activeCount() ? '' : 'hidden'}>Clear</button>
     </div>
-    <div class="filters" role="group" aria-label="Filter by wave or transport">
-      ${waves.map(w => btn('wave', w, `Wave ${w}`)).join('')}
-      ${transports.map(t => btn('transport', t, t.length > 18 ? t.slice(0, 17) + '…' : t)).join('')}
+    <div id="filter-panel" class="filter-panel" ${filtersOpen ? '' : 'hidden'}>
+      <div class="filters" role="group" aria-label="Filter by start colour">
+        ${btn('color', null, 'All')}
+        ${colors.map(([name, hex]) => btn('color', name, name, `style="border-color:${hex}"`)).join('')}
+      </div>
+      <div class="filters" role="group" aria-label="Filter by wave">
+        ${waves.map(w => btn('wave', w, `Wave ${w}`)).join('')}
+      </div>
+      <div class="filters" role="group" aria-label="Filter by how they are getting there">
+        ${transports.map(t => btn('transport', t, t.length > 18 ? t.slice(0, 17) + '…' : t)).join('')}
+      </div>
     </div>`;
 }
 
 const matches = r => {
   const q = filter.q.trim().toLowerCase();
-  return (!filter.color     || r.color_name === filter.color)
-      && (!filter.wave      || r.wave_num === filter.wave)
-      && (!filter.transport || r.transport_label === filter.transport)
+  return (!filter.color.size     || filter.color.has(r.color_name))
+      && (!filter.wave.size      || filter.wave.has(r.wave_num))
+      && (!filter.transport.size || filter.transport.has(r.transport_label))
       && (!q || r.display_name.toLowerCase().includes(q) || (r.bib_number || '').includes(q));
 };
 
@@ -374,7 +435,7 @@ function paintEveryone() {
  * is never replaced, focus and the caret look after themselves.
  */
 function applyFilter() {
-  const narrowed = !!(filter.q || filter.color || filter.wave || filter.transport);
+  const narrowed = isNarrowed();
   const cap = narrowed || showAll ? Infinity : ROSTER_CAP;
 
   // matched is how many pass the filter; drawn is how many are on screen.
@@ -421,10 +482,21 @@ function paintFilterStates() {
   for (const b of document.querySelectorAll('#filters [data-f]')) {
     const raw = b.dataset.v === 'null' ? null : b.dataset.v;
     const value = b.dataset.f === 'wave' ? Number(raw) : raw;
-    const on = filter[b.dataset.f] === value;
+    // The "All" chip of a dimension is the null one: it is lit when
+    // nothing in that dimension is chosen, which is also what clicking
+    // it does. Everything else reflects its own membership.
+    const on = value === null ? !filter[b.dataset.f].size : filter[b.dataset.f].has(value);
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', String(on));
   }
+  const sum = document.querySelector('#filter-toggle');
+  if (sum) {
+    const n = activeCount();
+    sum.textContent = n ? `Filter (${n})` : 'Filter';
+    sum.classList.toggle('on', !!n);
+  }
+  const clear = document.querySelector('#filter-clear');
+  if (clear) clear.hidden = !activeCount();
 }
 
 // ---------- render ----------
@@ -463,6 +535,11 @@ function render() {
     ${gaps.length ? `<h2>Still missing info</h2>
       <p class="empty">${gaps.length} ${gaps.length === 1 ? 'person hasn\'t' : 'people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>` : ''}
 
+    <h2>Invite someone</h2>
+    <p class="empty">Sending the link from your address bar does not work &mdash; the
+       password is stripped out of it the moment you arrive. Use this instead.</p>
+    <button class="ghost" id="invite">Copy invite link</button>
+
     <button class="ghost" id="signout">Sign out of this device</button>`;
 
   // Fills #everyone, then applyFilter() sets the heading, the no-match
@@ -493,17 +570,72 @@ app.addEventListener('click', async e => {
     return;
   }
 
+  if (e.target.id === 'filter-toggle') {
+    filtersOpen = !filtersOpen;
+    e.target.setAttribute('aria-expanded', String(filtersOpen));
+    document.querySelector('#filter-panel').hidden = !filtersOpen;
+    return;
+  }
+
+  if (e.target.id === 'filter-clear') {
+    filter.color.clear(); filter.wave.clear(); filter.transport.clear();
+    paintFilterStates();
+    applyFilter();
+    return;
+  }
+
   const f = e.target.closest('[data-f]');
   if (f) {
     const raw = f.dataset.v === 'null' ? null : f.dataset.v;
     const value = f.dataset.f === 'wave' ? Number(raw) : raw;
-    filter[f.dataset.f] = filter[f.dataset.f] === value ? null : value;
+    const set = filter[f.dataset.f];
+    // The null chip is "All": it clears its own dimension rather than
+    // joining it, so there is always a one-tap way back from a
+    // multi-selection.
+    if (value === null) set.clear();
+    else if (set.has(value)) set.delete(value);
+    else set.add(value);
     paintFilterStates();
     applyFilter();
     return;
   }
 
   if (e.target.id === 'show-all') { showAll = !showAll; applyFilter(); return; }
+
+  if (e.target.id === 'invite') {
+    const btn = e.target;
+    // The live region lives in the page shell, not in #app (§19), so it
+    // survives the re-render and is reachable from here.
+    const status = document.querySelector('#status');
+    btn.disabled = true;
+    try {
+      const { url } = await api('/api/invite');
+      // navigator.clipboard needs a secure context and a user gesture.
+      // Both hold here (HTTPS, inside a click), but iOS in particular
+      // still refuses often enough that a silent failure would be the
+      // worst outcome for the one control whose whole job is to fix
+      // sharing. So fall back to showing the link for a manual copy
+      // rather than reporting a success that did not happen.
+      const copied = await copyToClipboard(url);
+      // Re-enabled either way: whatever happened, a control that can
+      // never be pressed again is worse than one you can retry.
+      btn.disabled = false;
+      btn.textContent = copied ? 'Copied — paste it in your group chat' : 'Copy this link:';
+      status.textContent = copied ? 'Invite link copied to the clipboard.'
+                                  : 'Could not copy automatically — the link is shown below.';
+      if (!copied) {
+        const out = document.createElement('input');
+        out.className = 'search'; out.readOnly = true; out.value = url;
+        out.setAttribute('aria-label', 'Invite link — copy this');
+        btn.after(out); out.select();
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Copy invite link';
+      status.textContent = `Could not build an invite link: ${err.message}`;
+    }
+    return;
+  }
 
   if (e.target.id === 'signout') { store.clear(); location.reload(); }
 });

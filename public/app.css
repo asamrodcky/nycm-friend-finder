@@ -366,6 +366,31 @@ button.mini.on { background: var(--accent); color: var(--bg); border-color: var(
 }
 .derived strong { color: var(--text); font-size: 16px; }
 
+/* h2 is styled as a small uppercase section label everywhere else, which
+   is right for "Your people" and wrong for the one line meant to make
+   somebody stay. This overrides it back to a sentence. Still an h2, so
+   the h1 -> h2 order §19 verified is untouched. */
+h2.lede {
+  font-size: clamp(17px, 0.6rem + 1.9vw, 20px);
+  text-transform: none; letter-spacing: -0.01em; font-weight: 600;
+  color: var(--text); margin: 22px 0 10px; line-height: 1.25;
+}
+
+/* The "why" on the way in. Full text colour and not --muted, for the
+   same reason the outfit line is (§26): --muted is the colour reserved
+   for things you can skip, and this is the one block on the screen that
+   has to be read. Slightly tighter measure than the default so three
+   short paragraphs still look like something you can finish. */
+.why p { margin: 0 0 10px; font-size: 15px; line-height: 1.52; }
+.why p:last-child { margin-bottom: 0; }
+.why .why-last { font-weight: 500; }
+
+/* The filter disclosure. The chips themselves are unchanged (§19); this
+   is only the container that keeps them out of the way until asked for. */
+.filter-head { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; }
+#filter-toggle[aria-expanded="true"] { border-color: var(--field-line); }
+.filter-panel { margin-bottom: 8px; }
+
 .hint  { font-size: 12px; color: var(--muted); margin-top: 5px; }
 .error {
   background: var(--warnbg); color: var(--warn); font-size: 14px;

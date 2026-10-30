@@ -50,16 +50,31 @@ const LINK_KEY = 'k';
  *
  * A wrong or rotated key is stripped too and falls through to the normal
  * password screen -- a dead link should ask, not look broken.
+ *
+ * A FAILURE IS NOT THE SAME AS A DEAD KEY, and this used to treat them
+ * alike: any throw stripped the key. So a dropped connection on the
+ * subway, a 429 or a 5xx destroyed a perfectly good link, the refresh
+ * had nothing left to retry with, and the only way back was to find the
+ * original message again. Now only a 401 -- the server actually saying
+ * "that passcode is not right" -- strips. Anything else leaves the key
+ * in the URL so that pulling to refresh does the obvious thing.
  */
 async function redeemLinkKey() {
   const url = new URL(location.href);
   const key = url.searchParams.get(LINK_KEY);
   if (!key) return;
 
+  let keyIsDead = false;
   try {
     const { token } = await api('/api/auth', { method: 'POST', body: { passcode: key } });
     store.set(KEY.group, token);
-  } catch { /* stale or wrong: fall through to the form */ }
+  } catch (err) {
+    // 401 is the server's considered answer: this key is wrong or
+    // rotated. Everything else -- offline, 429, 5xx -- is this moment
+    // failing, not this link.
+    keyIsDead = err?.status === 401;
+    if (!keyIsDead) return;
+  }
 
   url.searchParams.delete(LINK_KEY);
   history.replaceState(null, '', url.pathname + url.search + url.hash);
@@ -119,7 +134,27 @@ async function askWhoYouAre(root, next) {
   try { claimable = (await api('/api/profile/unclaimed')).unclaimed.length; }
   catch { /* fall through to the two-button form */ }
 
+  // WHY THIS COPY IS HERE. §29 measured the funnel: 423 unique visitors,
+  // 36 signups, 8.5%. /api/runners is requireProfile, so this screen is
+  // the wall -- roughly 390 people were asked to invent a PIN before
+  // being shown a single reason to. They never learned 56 people were
+  // already inside. This is Sam's own explanation, trimmed to a phone
+  // screen, put in front of the ask instead of behind it.
   h(root, `
+    <h2 class="lede">Nobody should feel alone on race morning.</h2>
+    <div class="card why">
+      <p>NYC has some of the most complicated logistics of any race. Someone you
+         know could be on the same ferry, the same wave, even the same colour
+         &mdash; and you&rsquo;d have no idea until you&rsquo;re toeing the line
+         next to them.</p>
+      <p>There&rsquo;s so much going on during race week that it&rsquo;s easy to
+         lose track. You plan to meet someone race morning, then forget who to
+         text.</p>
+      <p>And unlike live tracking, you can&rsquo;t see anyone&rsquo;s start
+         information unless they tell you directly or post it.</p>
+      <p class="why-last">So this is a simple, no-frills site that matches you
+         with other runners who might have overlapping race mornings.</p>
+    </div>
     <h2>Who are you?</h2>
     <div class="stack">
       ${claimable ? `<button id="w-claim" class="ghost">Someone already added me</button>` : ''}
