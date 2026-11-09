@@ -340,6 +340,20 @@ deployment runs in a read-only demo mode where nothing can be claimed.
 
 ---
 
+## Tested
+
+Every structural claim on this page is asserted in [`tests/`](../tests), run with
+`npm test` against the committed snapshot:
+
+| File | What it pins |
+|---|---|
+| `model.test.mjs` | grain, insert-only history, referential integrity, domain rules |
+| `views.test.mjs` | view semantics, NULL-safety, the meetup tiers |
+| `privacy.test.mjs` | that the committed snapshot holds no real identity — and that anonymising did not flatten the distributions |
+| `negative_controls.test.mjs` | that each of the above actually fails when the rule is broken |
+
+68 assertions, about 120ms, no dependencies.
+
 ## Querying it yourself
 
 The anonymised dataset loads into SQLite, DuckDB or Postgres with no Cloudflare account:

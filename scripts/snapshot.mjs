@@ -210,19 +210,45 @@ try {
     return `'${String(v).replace(/'/g, "''")}'`;
   };
 
+  // Table DDL comes from the export, which does carry it.
   const ddl = kind => db.prepare(
     `SELECT sql FROM sqlite_master WHERE type = ? AND sql IS NOT NULL
       AND name NOT LIKE 'sqlite_%' ORDER BY name`,
   ).all(kind).map(r => r.sql.trim() + ';');
 
-  // Views come from the live database, not the export: `--table` selects
-  // tables only, and §8's revival path loads this file straight into a
-  // fresh D1. The app reads nothing but views, so a snapshot without
-  // them restores a database the app cannot use.
-  const views = JSON.parse(wrangler(
+  // Views AND INDEXES come from the live database, not the export:
+  // `--table` selects tables only, and §8's revival path loads this file
+  // straight into a fresh D1. The app reads nothing but views, so a
+  // snapshot without them restores a database the app cannot use.
+  //
+  // INDEXES WERE MISSED HERE FOR SEVEN MIGRATIONS, and the test suite
+  // caught it. The script emitted `ddl('index')` against the temp
+  // database it had just loaded from the export -- which contains no
+  // indexes, because the export does not carry them -- so it faithfully
+  // wrote out nothing at all. Views avoided the same fate only because
+  // somebody had already noticed the export's shape for them.
+  //
+  // It matters more than performance. idx_fct_current_runner is a
+  // PARTIAL UNIQUE index, and it is the thing that enforces the grain:
+  // "at most one live row per runner" is a claim the schema makes, and
+  // without the index a snapshot cheerfully accepts a second one.
+  const liveDdl = type => JSON.parse(wrangler(
     'd1', 'execute', DB, where, '--json', '--command',
-    "SELECT sql FROM sqlite_master WHERE type='view' AND sql IS NOT NULL ORDER BY name",
+    `SELECT sql FROM sqlite_master WHERE type='${type}' AND sql IS NOT NULL `
+      + "AND name NOT LIKE 'sqlite_%' ORDER BY name",
   ))[0].results.map(r => r.sql.trim() + ';');
+
+  const views = liveDdl('view');
+
+  // Only indexes belonging to tables that survive. The first version of
+  // this pulled every index in the database and the output check caught
+  // it instantly: auth_throttle is dropped by name for holding client IP
+  // addresses, and its index would have reintroduced the table
+  // definition the drop exists to remove.
+  const indexes = liveDdl('index').filter(sql => {
+    const on = /\sON\s+"?([A-Za-z_][A-Za-z0-9_]*)"?\s*\(/i.exec(sql);
+    return on && present.includes(on[1]);
+  });
 
   const lines = [
     `-- NYCM Friend Finder — race-day snapshot`,
@@ -257,7 +283,7 @@ try {
     lines.push('');
   }
 
-  lines.push(...ddl('index'), '', ...views, '', 'COMMIT;', '');
+  lines.push(...indexes, '', ...views, '', 'COMMIT;', '');
   const sql = lines.join('\n');
 
   // ---- 6. prove it, against the text that will be committed --------
@@ -297,9 +323,15 @@ try {
     // Belt and braces over the text that actually gets written, as SQL
     // string literals rather than bare substrings, and only for values
     // long enough for a match to mean something.
+    // A value that is ALREADY synthetic cannot be a leak, and since 0010
+    // anonymised production in place, every "original" value read before
+    // scrubbing is now an alias. Without this the check flags all 139 of
+    // them as survivals -- technically true, entirely meaningless, and
+    // it blocks a run whose output is correct.
+    const synthetic = v => /^Runner \d{3}$/.test(v) || /^9\d{4}$/.test(String(v));
     const asLiteral = v => `'${String(v).replace(/'/g, "''")}'`;
     const leaked = [...before.names, ...before.bibs, ...before.handles]
-      .filter(v => v && String(v).length >= 3 && sql.includes(asLiteral(v)));
+      .filter(v => v && String(v).length >= 3 && !synthetic(v) && sql.includes(asLiteral(v)));
     if (leaked.length) die(`${leaked.length} original value(s) written as literals despite --anonymise`);
   }
 

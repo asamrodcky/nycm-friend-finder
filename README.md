@@ -2,6 +2,8 @@
 
 **A tool that helped 73 runners find each other at the start of the 2026 TCS New York City Marathon.**
 
+[![tests](https://github.com/asamrodcky/nycmfriendfinder/actions/workflows/test.yml/badge.svg)](https://github.com/asamrodcky/nycmfriendfinder/actions/workflows/test.yml)
+
 [**Live demo →**](https://nycm26friendfinder.com) · no login, read-only, real anonymised data
 
 ---
@@ -117,6 +119,27 @@ who changed wave and when — 29 superseded rows survive from 18 people who came
 
 **→ [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md)** has the rendered ERD, a table-by-table
 dictionary, grain statements and the reasoning behind each modelling decision.
+
+### Tests
+
+```bash
+npm test     # 68 assertions, ~120ms, no install and no database to point at
+```
+
+The suite asserts **meaning, not code**: that the grain is what the documentation claims,
+that the insert-only history is coherent, that two people who both left a field blank are
+never reported as sharing it, and that a complete spectator is never told they are missing
+a bib. Closer to dbt tests than to unit tests, written against the real race data.
+
+It runs with **zero dependencies** — `node:test` and `node:sqlite` are built in, and
+`snapshots/nycm2026-anon.sql` is committed, so CI needs nothing but Node.
+
+`tests/negative_controls.test.mjs` is the part worth reading. Every other assertion passes
+against real data, which proves little on its own — a check that cannot fail is worth
+nothing. Each control deliberately breaks a rule and asserts the check catches it. Writing
+them immediately found a real bug: the snapshot had been exporting **no indexes at all**,
+so the partial unique index enforcing "one live row per runner" was absent from the
+committed dataset.
 
 ### API surface
 

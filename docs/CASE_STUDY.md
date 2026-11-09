@@ -1,4 +1,4 @@
-# Case study: six things that went wrong, and what they taught me
+# Case study: seven things that went wrong, and what they taught me
 
 NYCM Friend Finder ran for 17 days and 73 people used it. This is the short version of
 what actually happened — the problems worth reading about, rather than a tour of the
@@ -14,6 +14,7 @@ file is the 15-minute version.
 4. [White on white, in one theme only](#4-white-on-white-in-one-theme-only)
 5. [A spectator is not a runner with missing fields](#5-a-spectator-is-not-a-runner-with-missing-fields)
 6. [Taking the identities out afterwards](#6-taking-the-identities-out-afterwards)
+7. [The test that passed when it should have failed](#7-the-test-that-passed-when-it-should-have-failed)
 
 ---
 
@@ -328,6 +329,53 @@ check that refused to proceed rather than a check that reported a problem.
 
 ---
 
+## 7. The test that passed when it should have failed
+
+Everything above was already fixed when I sat down to write a test suite. The app is
+frozen and read-only, so there were no regressions left to catch — I was writing tests as
+documentation and as evidence.
+
+I wrote the assertions first and they all passed, which proves very little. A check that
+cannot fail is worth nothing, and `SELECT COUNT(*) ... WHERE <condition I typo'd>` returns
+zero just as happily as a correct one. So I added **negative controls**: each one
+deliberately breaks a rule and asserts the check catches it.
+
+One of them did not.
+
+```js
+// insert a SECOND live row for a runner who already has one
+INSERT INTO fct_runner_start (runner_key, is_current) VALUES (7, 1);
+```
+
+That should be impossible. `idx_fct_current_runner` is a **partial unique index** on
+`(runner_key) WHERE is_current = 1`, and it is the only thing enforcing the model's
+headline claim: at most one live row per person. The insert succeeded.
+
+The index was not there. Nor were the other eight — **the committed snapshot contained
+zero indexes**, against production's ten.
+
+The cause was in the export tool. It emitted index DDL by reading the temporary database
+it had just loaded from `wrangler d1 export` — and that export carries tables and data
+but no indexes, so the tool faithfully wrote out nothing. Views had escaped the same fate
+only because someone had already noticed the export's shape for *them*, and there is a
+comment in the file saying so. Indexes never got the same attention.
+
+It mattered more than performance. Anyone loading that snapshot — the documented revival
+path, or an employer poking at the dataset — got a database that would silently accept
+data the real one rejects. The constraint was documented, asserted in prose, and absent.
+
+Fixing it surfaced two more things in the same hour. Pulling every index from the live
+database dragged in one belonging to `auth_throttle`, a table excluded by name for holding
+IP addresses — caught by the export's own output check, which refused to write the file.
+And the anonymisation leak-check then failed with *139 survivors*, because production is
+now anonymised in place, so the "original" values it captures before scrubbing are already
+aliases: it was comparing `Runner 001` against `Runner 001` and calling it a leak.
+
+**What I took from it:** the negative control is the test. The assertions that passed told
+me nothing I did not already believe; the one that passed *when it should have failed* was
+the only one that taught me anything. If a suite has never failed, you have not yet
+learned whether it works.
+
 ## What I would do differently
 
 **Measure the funnel on day one.** I had Cloudflare analytics the whole time and did not
@@ -340,6 +388,8 @@ invisible in the environment I develop in.
 the spectator-gaps bug were both findable by asking "who sees this, and what do they see?"
 — a question I asked consistently afterwards and inconsistently before.
 
-**Keep the tests in the repo.** I wrote 27 projection unit tests and 21 shared-link
-assertions, and ran them repeatedly, but they lived in a scratch directory and are gone.
-From the outside this project looks untested, and that is my fault rather than untrue.
+**Write tests for the data, not just the code — and write them earlier.** The suite in
+`tests/` now holds 68 assertions and runs in about 120ms, but I wrote it after the race.
+Two of the six bugs above would have been caught by it, and a seventh was found by writing
+it. The projection unit tests and shared-link assertions I *did* write during the build
+lived in a scratch directory and are gone, which is a separate mistake and my own.

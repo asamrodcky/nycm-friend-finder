@@ -1,0 +1,28 @@
+# Runs on every push. No secrets, no services, no npm install.
+#
+# The suite reads snapshots/nycm2026-anon.sql, which is committed, and
+# uses node:test and node:sqlite, which are built in. So CI needs nothing
+# but Node -- which is the whole reason data tests are practical here.
+# Most data test suites need a database to point at; this one ships with
+# its own.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Typecheck needs the dev dependencies; the tests do not.
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

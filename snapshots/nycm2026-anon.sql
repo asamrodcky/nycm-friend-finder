@@ -1,5 +1,5 @@
 -- NYCM Friend Finder — race-day snapshot
--- taken 2026-11-09T18:59:36.774Z from production D1
+-- taken 2026-11-09T20:15:06.955Z from production D1
 --
 -- Scrubbed before committing: password hashes, names, instagram handles, bib numbers, meetup notes.
 -- Excluded: auth_throttle (operational state, and it holds client IP addresses); d1_migrations (wrangler bookkeeping, rebuilt by `migrations apply`); _cf_KV (Cloudflare internal); _cf_METADATA (Cloudflare internal (local miniflare only)).
@@ -377,6 +377,17 @@ INSERT INTO "fct_spectator_mile" ("runner_start_key", "mile_marker") VALUES (93,
 INSERT INTO "fct_spectator_mile" ("runner_start_key", "mile_marker") VALUES (97, 13);
 INSERT INTO "fct_spectator_mile" ("runner_start_key", "mile_marker") VALUES (97, 20);
 
+CREATE INDEX idx_dim_runner_display ON dim_runner (display_name);
+CREATE INDEX idx_fct_current     ON fct_runner_start (is_current);
+CREATE UNIQUE INDEX idx_fct_current_bib
+  ON fct_runner_start (bib_number) WHERE is_current = 1 AND bib_number IS NOT NULL;
+CREATE UNIQUE INDEX idx_fct_current_runner
+  ON fct_runner_start (runner_key) WHERE is_current = 1;
+CREATE INDEX idx_fct_meetup      ON fct_runner_start (transport_key, depart_time_local) WHERE is_current = 1;
+CREATE INDEX idx_fct_start_group ON fct_runner_start (color_key, wave_key, corral_key)  WHERE is_current = 1;
+CREATE INDEX idx_saved_by   ON fct_runner_saved (runner_key);
+CREATE INDEX idx_saved_whom ON fct_runner_saved (saved_runner_key);
+CREATE INDEX idx_spectator_mile_marker ON fct_spectator_mile (mile_marker);
 
 CREATE VIEW v_meetup_corral AS
 SELECT

@@ -13,6 +13,7 @@
     "db:q:remote": "wrangler d1 execute nycm-friendfinder --remote --command",
     "db:snapshot": "node scripts/snapshot.mjs --remote",
     "db:snapshot:anon": "node scripts/snapshot.mjs --remote --anonymise",
+    "test": "node --test 'tests/*.test.mjs'",
     "typecheck": "tsc --noEmit",
     "roster:build": "node scripts/load_roster.mjs",
     "db:load:local": "wrangler d1 execute nycm-friendfinder --local --file=seed/roster_load.sql",
