@@ -1,236 +1,203 @@
 # NYCM Friend Finder
 
-Find your friends at the start of the TCS New York City Marathon.
-**Race day: Sunday, November 1, 2026.**
+**A tool that helped 73 runners find each other at the start of the 2026 TCS New York City Marathon.**
 
-Friends enter their start assignment (color, wave, corral) and how they're
-getting to Fort Wadsworth. The app then surfaces the overlaps — same corral,
-same ferry, same bus slot — so you can actually find a familiar face at 5am.
+[**Live demo →**](https://nycm26friendfinder.com) · no login, read-only, real anonymised data
 
-Built to cost $0 to run and to be torn down after the race, leaving a
-committed SQL snapshot behind.
+---
 
-## Stack
+New York has the most complicated start logistics of any major marathon. 50,000 runners
+are sorted into three colours, five waves and a dozen corrals, spread across Staten
+Island, and sent over the Verrazzano in groups two hours apart. Someone you know can be
+on the same ferry, in the same wave, even the same corral — and you will never find out,
+because there is no way to see anyone else's start assignment.
+
+This app was that way. People entered their colour, wave, corral and how they were
+getting to Fort Wadsworth; it computed who overlapped with whom and ranked the overlaps
+by how much of the morning you would actually spend within reach of each other.
+
+It ran for 17 days, from first signup to race morning.
+
+## What happened
+
+| | |
+|---|---|
+| People who signed up | **73** |
+| Live start assignments | 69 |
+| People who followed someone | 50 follow relationships |
+| People who came back and edited their entry | **18**, producing 98 versioned rows |
+| Complete profiles | 63 of 69 |
+| Signup window | 15 Oct – 1 Nov 2026 |
+
+The number that taught me the most was a worse one. Mid-week, Cloudflare reported **423
+unique visitors against 36 signups — 8.5%**. The app was not broken. The roster endpoint
+required a profile, so roughly 390 people were asked to invent a PIN *before* being shown
+a single reason to, and never learned that 56 people were already inside. Three changes
+came out of that diagnosis: an explanation placed ahead of the ask, a shareable invite
+link, and filters that stopped eating the whole screen on a phone.
+
+That is the thing this project is actually about — not the stack.
+
+## Try it
+
+The live site is a **read-only demo of a finished race**. Identities were removed
+afterwards; the structure was not. Every timestamp, every superseded row, every follow
+relationship and all the real mess — the two accidental duplicate accounts, the four
+people who removed themselves, the 68% who left the outfit field blank — is exactly as
+people left it.
+
+Names read `Runner 017` rather than a plausible fake, deliberately: an obvious alias says
+*this was anonymised*, where an invented name says nothing.
+
+## Run it locally
+
+No Cloudflare account needed.
+
+```bash
+npm install
+npm run db:migrate:local     # schema + seeded reference data, empty roster
+npm run dev                  # http://localhost:8788
+```
+
+Local secrets live in `.dev.vars` (gitignored). Handy while poking around:
+
+```bash
+npm run db:q "SELECT * FROM v_runner_start"   # query the local database
+npm run db:reset:local                        # wipe and rebuild
+```
+
+## How it is built
 
 | | |
 |---|---|
 | Hosting | Cloudflare Pages |
 | Database | Cloudflare D1 (SQLite) |
-| Frontend | Plain HTML + CSS + vanilla JS, no build step |
-| API | TypeScript Cloudflare Pages Functions |
-| Auth | One shared group passcode |
+| API | TypeScript Pages Functions |
+| Frontend | HTML, CSS and vanilla JS — **no build step, no framework, no dependencies** |
+| Cost to run | $0 |
 
-## Quick start (local — no Cloudflare account needed)
+No build step was a constraint I set on purpose. Every file in `public/` is served
+exactly as written, so what you read in the repo is what ran in production.
 
-```bash
-npm install
-npm run db:migrate:local     # build the schema + seed the dimensions
-npm run dev                  # http://localhost:8788
+```
+functions/api/      12 route handlers (TypeScript)
+lib/                auth, validation, HTTP helpers — shared by the routes
+public/             the whole frontend: 2 pages, 5 ES modules, 1 stylesheet
+migrations/         10 migrations, applied in order, never edited after shipping
+sql/                ad-hoc analysis queries
+scripts/            snapshot/export tooling with drift guards
+snapshots/          a loadable anonymised export of the real data
 ```
 
-Local secrets live in `.dev.vars` (gitignored). The local passcode is
-`verrazzano` unless you change it.
+### The data model
 
-### Handy
+A **star schema**, chosen because the project was partly an excuse to build one properly.
 
-```bash
-npm run db:q "SELECT * FROM v_runner_start"   # query local
-npm run db:reset:local                         # wipe + rebuild local
+```
+dim_color ──┐
+dim_wave  ──┤
+dim_corral──┼──> fct_runner_start <── dim_runner ──┐
+dim_transport┘          │                    ▲     │
+                        │                    └─────┘
+              fct_spectator_mile      fct_runner_saved
+                                    (bridge: runner → runner)
 ```
 
-## Access model
+Both fact tables are **factless** — neither has an additive measure. `fct_runner_start`
+records that a runner *is assigned* to a colour, wave, corral and transport plan;
+`fct_runner_saved` records only that one person wants to find another. `COUNT(*)` is the
+only measure either offers, which is the point.
 
-Two layers, because they answer different questions.
+`fct_runner_start` is **insert-only**. An edit supersedes the previous row
+(`is_current = 0`, `valid_to_utc` stamped) rather than updating it, so the data records
+who changed wave and when — 29 superseded rows survive from 18 people who came back.
 
-| Token | How you get it | What it unlocks |
-|---|---|---|
-| **group** | the shared group password | the onboarding form and sign-in |
-| **profile** | claim / onboard / sign in with a PIN | the roster, your own entry, your saved list |
+**All reads go through views.** The API never touches a base table and never writes
+`WHERE is_current = 1`; nine views carry that.
 
-A profile token is only issued after group auth, so it implies group
-membership and satisfies both checks. Both are HMAC-signed expiry stamps
-with a 30-day TTL — stateless, no session table to clean up at teardown.
+**→ [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md)** has the rendered ERD, a table-by-table
+dictionary, grain statements and the reasoning behind each modelling decision.
 
-**The PIN is identity, not security.** It answers "this is my new phone,
-re-attach me to my row" — `localStorage` does not travel between a laptop
-and a phone, so without it you would onboard twice and end up as two
-people in different corrals. It is hashed (PBKDF2-SHA256, per-runner
-salt) because snapshots get committed and people reuse PINs, but a
-4-digit PIN behind a shared password is not a security boundary and the
-app does not pretend otherwise.
-
-Sign-in accepts **a bib number or a name**, both with the PIN. Bib is the
-fast path, but some people have no bib yet, and anyone who corrects a
-wrong bib would otherwise lock themselves out.
-
-PINs are **4 to 6 digits**. Length costs nothing — PBKDF2 is priced per
-iteration, not per character, so a 6-digit PIN hashes in the same time as
-a 4-digit one while being 100x harder to brute-force out of a leaked
-snapshot. The form accepts either and nudges toward 6.
-
-### Resetting a forgotten PIN
-
-There is no automated recovery — no email, no phone number. If someone
-forgets their PIN or typos it when claiming, clear it and they can
-re-claim their row with their data intact:
-
-```bash
-npm run db:q:remote "UPDATE dim_runner SET pin_hash=NULL, pin_salt=NULL, claimed_at_utc=NULL WHERE display_name='Runner V'"
-```
-
-They reappear in the "already on the roster?" picker and set a new PIN.
-Bib, wave, corral and transport are all untouched. Use `db:q` instead of
-`db:q:remote` against the local database.
-
-## API
+### API surface
 
 | Route | Method | Needs | Purpose |
 |---|---|---|---|
-| `/api/auth` | POST | — | `{passcode}` -> group token |
-| `/api/meta` | GET | group | Seeded dimensions + departure slots, for the dropdowns |
+| `/api/mode` | GET | — | Is this deployment a read-only demo? |
+| `/api/auth` | POST | — | `{passcode}` → group token |
+| `/api/meta` | GET | group | Seeded dimensions, for the form dropdowns |
+| `/api/invite` | GET | group | Mints a shareable link, server-side |
 | `/api/profile/unclaimed` | GET | group | The "already on the roster?" picker |
-| `/api/profile/claim` | POST | group | Claim an imported row, set its PIN |
-| `/api/profile/onboard` | POST | group | Brand-new person: row + PIN + first assignment |
-| `/api/profile/signin` | POST | group | Bib-or-name + PIN -> profile token |
-| `/api/runners` | GET | profile | The whole roster, one shot |
-| `/api/runners/me` | POST | profile | Update my own entry |
-| `/api/runners/me` | DELETE | profile | Take myself off the roster |
-| `/api/saved` | GET | profile | People I saved, and how we overlap |
-| `/api/saved` | POST | profile | Save someone |
-| `/api/saved` | DELETE | profile | Unsave someone (`?key=N`) |
-| `/api/meetups` | GET | profile | The four discovery tiers plus the gap list |
+| `/api/profile/claim` | POST | group | Claim an imported row, set a PIN |
+| `/api/profile/onboard` | POST | group | New person: row + PIN + first assignment |
+| `/api/profile/signin` | POST | group | Bib-or-name + PIN → profile token |
+| `/api/runners` | GET | profile | The whole roster |
+| `/api/runners/me` | POST / DELETE | profile | Edit or remove my own entry |
+| `/api/saved` | GET / POST / DELETE | profile | Who I follow, and how we overlap |
+| `/api/meetups` | GET | profile | Discovery tiers plus the gap list |
 
-Reads hit views only; the API never touches a base table.
+**There is no route for editing someone else's entry.** The runner key comes from the
+signed token, never the request body.
 
-**There is no route for editing someone else's entry.** The runner key
-comes from the profile token, never the request body — otherwise the PIN
-would be guarding nothing.
+### Access model
 
-## Data model
+Two tokens, answering different questions. A **group** token comes from the shared
+passcode and unlocks onboarding; a **profile** token comes from a PIN and unlocks the
+roster. Both are HMAC-signed expiry stamps — stateless, with no session table to clean up.
 
-A **star schema**, because the point of this project is to practise one.
+The PIN is **identity, not security**: it answers *"this is my new phone, re-attach me to
+my row"*, because `localStorage` does not travel between a laptop and a phone. It is
+hashed with PBKDF2-SHA256 and a per-runner salt, because snapshots get exported and
+people reuse PINs — but a 6-digit PIN behind a shared passcode is not a security boundary
+and the app never pretended otherwise.
 
-```
-              dim_color ──┐
-              dim_wave  ──┤
-              dim_corral──┼──> fct_runner_start <── dim_runner ──┐
-          dim_transport ──┘                              ▲       │
-                                                         └───────┘
-                                              fct_runner_saved
-                                           (bridge, runner to runner)
-```
+The shared passcode was **"unlisted, not private"** by design, the same posture as a link-
+shared document. That was a deliberate trade for a tool helping friends find each other
+on one specific morning, and it is written up honestly rather than dressed up.
 
-**Both fact tables are factless.** Neither has an additive measure.
-`fct_runner_start` records that a runner *is assigned* to a color, wave,
-corral and transport plan; `fct_runner_saved` records only that one person
-wants to find another. Kimball's coverage/event pattern twice over, and
-`COUNT(*)` is the only measure either one offers — which is the point.
+## After the race
 
-`fct_runner_saved` is also a **many-to-many bridge** from `dim_runner` back
-to itself. Unlike the start table it is *not* insert-only: unsaving someone
-is a correction, not history, and keeping it would turn the snapshot into a
-record of who changed their mind about whom.
+The app stopped being useful on 1 November. The data did not stop being exposed.
 
-The payoff view is `v_saved_overlap` — for each person you saved, *how* do
-you line up? Every comparison is NULL-guarded, since `NULL = NULL` is NULL
-rather than true, and two people who both have no corral must not read as
-sharing one.
+A display name plus a bib number is a lookup key: race results are public, so the pair
+yields a finish time, splits, an age group, a hometown and photographs. Migration `0010`
+removed every name, bib, handle, free-text note and password hash from the live database
+in place, keeping all structure and history. The real roster lives encrypted, offline.
 
-Two design notes worth knowing before you change anything:
+The write-up of that assessment — what was exposed, what the risk chain actually was, and
+why anonymising in place beat keeping real data behind alias columns — is in the
+engineering log below.
 
-- **Start time is not stored on the fact.** It's an attribute of `dim_wave`,
-  because NYRR fully determines start time from your wave. The input form
-  derives and displays it rather than asking.
-- **The fact table is insert-only.** An edit supersedes the previous row
-  (`is_current = 0`, `valid_to_utc` stamped) instead of updating it, so the
-  snapshot records who moved wave and when. NYRR allows moving to a later
-  wave, so this happens for real. Reads go through views that hide the
-  filter — the API never writes `WHERE is_current = 1`.
+## Reading further
 
-All reads go through views (`v_runner_start`, `v_meetup_transport`,
-`v_meetup_corral`); the API never touches a base table. Ad-hoc analysis
-queries are in `sql/`.
+[`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) is the ERD and data dictionary — start there
+if you care about the modelling.
 
-## Seed data caveat
+[`project_notes_public.md`](project_notes_public.md) is the **raw engineering log** —
+chronological, around 25,000 words, written as working notes rather than as a document.
+Every decision with its reasoning, including the ones that turned out wrong and got
+reversed. It is long on purpose; skim the headings and read what looks interesting.
 
-NYRR's site sits behind a queue during race week, so two seeded things come
-from secondary sources and are marked `-- VERIFY` in
-`migrations/0001_dims.sql`:
-
-1. **Bridge decks** — blue + orange upper, pink lower. Corroborated across
-   several course guides. Display-only; no logic depends on it.
-2. **Transport options** — the standard set. The input form builds its
-   dropdown from `dim_transport` via `/api/meta`, so correcting these rows
-   needs no code change and no redeploy of app logic.
-
-For 2026 the start colors are **blue, orange, pink**. Green was retired.
-
-## Test data vs production data
-
-These are deliberately separate, and the separation is structural rather
-than a matter of remembering.
-
-**Migrations seed only reference data** — colors, waves, corrals and
-transport options. There is no `INSERT INTO dim_runner` or
-`fct_runner_start` anywhere in `migrations/`, so applying them to a
-remote database produces a correct, completely empty roster. That is
-what production should start as: everyone adds themselves.
-
-**Roster data only ever arrives through `seed/roster_load.sql`**, which
-is generated from a gitignored CSV, is itself gitignored, and is applied
-by `db:load:local` — a `--local` command with no remote counterpart.
-
-Confirm before going live:
+`sql/` holds the ad-hoc analysis queries, and `snapshots/nycm2026-anon.sql` loads the
+anonymised dataset into SQLite, DuckDB or Postgres as-is if you want to poke at it:
 
 ```bash
-npm run db:check:remote
-# expect: colors 3, waves 5, transports 8, runners 0, assignments 0
+sqlite3 nycm.db < snapshots/nycm2026-anon.sql
 ```
 
-If you ever *do* want the spreadsheet roster in production — so your
-group claims rows instead of retyping — generate it and apply it
-explicitly:
+## A note on how this was built
 
-```bash
-npm run roster:build -- am_ftc_athletes_nycm.csv
-npx wrangler d1 execute nycm-friendfinder --remote --file=seed/roster_load.sql
-```
+I built this in a pair-programming loop with Claude (Anthropic's AI assistant), and the
+engineering log is a record of that collaboration — which is why it reads like a
+conversation with the reasoning left in.
 
-Note that this is a **reset and load**: it clears the roster first, so
-never run it against a production database people have already used.
+I am flagging it because the alternative is letting someone wonder. The architecture
+decisions, the product calls and the diagnosis work were mine; a great deal of the
+implementation, and much of the adversarial "what breaks this" pressure, was not. The
+honest summary is that it let one person ship and maintain more than one person normally
+would in 17 days, and that the parts I am proudest of — the funnel diagnosis, the
+decision to anonymise in place, the insert-only fact table — are decisions rather than
+code.
 
-## Deploy
+## Licence
 
-```bash
-npx wrangler login
-npx wrangler d1 create nycm-friendfinder          # paste the id into wrangler.toml
-npx wrangler d1 migrations apply nycm-friendfinder --remote
-npx wrangler pages project create nycm-friendfinder
-npx wrangler pages secret put GROUP_PASSCODE --project-name nycm-friendfinder
-npx wrangler pages secret put TOKEN_SECRET   --project-name nycm-friendfinder
-npm run deploy
-```
-
-`npm run deploy` stamps `public/version.json` with a hash of the frontend before handing
-off to `wrangler pages deploy`. That stamp is how a tab that is already open notices a new
-build and reloads itself; `public/_headers` is what stops the browser holding the old
-modules for four hours. Deploying with bare `wrangler pages deploy` works, it just skips
-the stamp.
-
-## Teardown
-
-Snapshot **before** deleting anything:
-
-```bash
-npm run db:snapshot                               # -> snapshots/nycm2026-final.sql
-# or, if the repo might ever be public or shared:
-npm run db:snapshot:anon                          # -> snapshots/nycm2026-anon.sql
-
-git add snapshots/ && git commit -m "Final race-day snapshot"
-
-npx wrangler pages project delete nycm-friendfinder
-npx wrangler d1 delete nycm-friendfinder
-```
-
-The snapshot is plain SQL, so it loads into local SQLite, DuckDB or Postgres
-for analysis later without any Cloudflare account at all.
+MIT. See [`LICENSE`](LICENSE).
