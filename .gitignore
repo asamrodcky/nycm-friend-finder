@@ -23,3 +23,6 @@ dist/
 # A name + bib is enough to look someone up on NYRR tracking.
 *.csv
 seed/
+
+# Holds the real names the scrubber exists to remove. Never commit it.
+.scrub-names.json
