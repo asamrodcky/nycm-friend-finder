@@ -169,8 +169,14 @@ engineering log below.
 
 ## Reading further
 
-[`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) is the ERD and data dictionary — start there
-if you care about the modelling.
+[`docs/CASE_STUDY.md`](docs/CASE_STUDY.md) — **start here.** Six things that went wrong
+and what each one taught me, in about 12 minutes: the 8.5% diagnosis, a link that lost its
+password by design, a promise that never settled, a selected button that was invisible in
+one theme only, a model that forced spectators to describe themselves by what they lacked,
+and taking the identities out after the race.
+
+[`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) is the ERD and data dictionary — go there if you
+care about the modelling.
 
 [`project_notes_public.md`](project_notes_public.md) is the **raw engineering log** —
 chronological, around 25,000 words, written as working notes rather than as a document.
