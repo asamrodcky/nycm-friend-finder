@@ -20,6 +20,52 @@ export interface Env {
   DB: D1Database;
   GROUP_PASSCODE: string;
   TOKEN_SECRET: string;
+  /** "1" turns the live site into a read-only demo. See demoMode(). */
+  DEMO_MODE?: string;
+}
+
+/**
+ * The post-race posture.
+ *
+ * The race was 1 November. 0010 took the identities out of the database
+ * and this takes the locks off what is left, because once there is
+ * nothing to protect a passcode is just a wall between an employer and
+ * a working app -- the same wall §29 measured costing 8.5% conversion.
+ *
+ * It also closes a hole 0010 opened. Nulling every pin_hash means every
+ * runner now matches v_unclaimed_runner's definition of "claimable", so
+ * the claim screen would hand a stranger an identity to edit. In demo
+ * mode nothing can be written at all, so there is nothing to claim.
+ */
+export const demoMode = (env: Env): boolean => env.DEMO_MODE === '1';
+
+/**
+ * The runner a demo visitor looks around as.
+ *
+ * The one with the most people followed, among those with a complete
+ * profile. Picking the lowest key instead -- the obvious version -- put
+ * visitors on a runner who had followed nobody, so "Your people" was
+ * empty and told them to tap a star that demo mode had just removed.
+ * The whole point of the roster is the overlap between people, so the
+ * demo has to open on somebody who has some.
+ */
+export async function demoViewerKey(env: Env): Promise<number | null> {
+  const row = await env.DB.prepare(`
+    SELECT v.runner_key,
+           (SELECT COUNT(*) FROM fct_runner_saved s WHERE s.runner_key = v.runner_key) AS follows
+      FROM v_runner_start v
+     WHERE v.is_complete = 1
+     ORDER BY follows DESC, v.runner_key
+     LIMIT 1
+  `).first<{ runner_key: number }>();
+  return row?.runner_key ?? null;
+}
+
+/** 403 for anything that writes, while the demo is on. */
+export function demoBlocked(env: Env): Response | null {
+  return demoMode(env)
+    ? err('this is a read-only demo of a finished race -- nothing can be changed', 403)
+    : null;
 }
 
 // Race day is weeks out and these are friends, not customers. Making
@@ -78,6 +124,7 @@ function configProblem(env: Env): Response | null {
 
 /** Group membership. A profile token also satisfies this. */
 export async function requireGroup(request: Request, env: Env): Promise<Response | null> {
+  if (demoMode(env)) return null;
   const bad = configProblem(env);
   if (bad) return bad;
   const token = bearer(request);
@@ -89,6 +136,13 @@ export async function requireGroup(request: Request, env: Env): Promise<Response
 export async function requireProfile(
   request: Request, env: Env,
 ): Promise<{ runnerKey: number } | Response> {
+  // No token, no PIN, no passcode: a demo visitor is signed in as the
+  // viewer the moment they arrive. Reads only -- every mutating handler
+  // calls demoBlocked() before it touches anything.
+  if (demoMode(env)) {
+    const key = await demoViewerKey(env);
+    return key ? { runnerKey: key } : err('the demo roster is empty', 503);
+  }
   const bad = configProblem(env);
   if (bad) return bad;
   const token = bearer(request);

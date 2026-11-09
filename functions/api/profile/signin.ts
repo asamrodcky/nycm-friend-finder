@@ -4,12 +4,15 @@
 // of the nineteen have no bib, and someone who guessed theirs wrong and
 // corrected it would otherwise lock themselves out -- so name works too.
 
-import { type Env, requireGroup, mintProfileToken } from '../../../lib/auth';
+import { type Env, requireGroup, mintProfileToken, demoBlocked } from '../../../lib/auth';
 import { err, json } from '../../../lib/http';
 import { pinMatches } from '../../../lib/pin';
 import { LOCKED_OUT, SIGNIN, clearFailures, isLockedOut, noteFailure } from '../../../lib/throttle';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   const blocked = await requireGroup(request, env);
   if (blocked) return blocked;
 

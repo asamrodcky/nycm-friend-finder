@@ -5,7 +5,7 @@
 // from the profile token, so the runner key is never taken from the
 // request body -- otherwise the PIN would be guarding nothing.
 
-import { type Env, requireProfile } from '../../../lib/auth';
+import { type Env, requireProfile, demoBlocked } from '../../../lib/auth';
 import { err, json } from '../../../lib/http';
 import { parseRunner, type RunnerInput } from '../../../lib/validate';
 
@@ -22,6 +22,9 @@ function friendlyDbError(message: string, input: RunnerInput): string {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   const who = await requireProfile(request, env);
   if (who instanceof Response) return who;
 
@@ -74,6 +77,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 };
 
 export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   const who = await requireProfile(request, env);
   if (who instanceof Response) return who;
 

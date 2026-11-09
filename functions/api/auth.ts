@@ -1,8 +1,11 @@
-import { type Env, mintGroupToken, passcodeMatches } from '../../lib/auth';
+import { type Env, mintGroupToken, passcodeMatches, demoBlocked } from '../../lib/auth';
 import { err, json } from '../../lib/http';
 import { GROUP, LOCKED_OUT, clearFailures, clientIp, isLockedOut, noteFailure } from '../../lib/throttle';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   if (!env.GROUP_PASSCODE || !env.TOKEN_SECRET) {
     return err('server is missing GROUP_PASSCODE or TOKEN_SECRET', 500);
   }

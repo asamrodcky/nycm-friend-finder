@@ -541,3 +541,9 @@ a.btn {
 }
 .center { text-align: center; }
 .stack > * + * { margin-top: 8px; }
+
+/* The demo banner. Same dashed strip as the invite bar it replaces, so
+   the page keeps its shape, but it reads rather than acts. */
+.demo-note p { margin: 0 0 7px; font-size: 14px; line-height: 1.5; }
+.demo-note p:last-child { margin-bottom: 0; }
+.demo-note strong { color: var(--text); }

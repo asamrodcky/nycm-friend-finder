@@ -10,3 +10,14 @@ binding = "DB"
 database_name = "nycm-friendfinder"
 database_id = "146d5f13-44f4-4fa3-810d-c7cefbffcae8"
 migrations_dir = "migrations"
+
+# POST-RACE. "1" turns the deployed site into a read-only demo: no
+# passcode, no PIN, every write endpoint refuses, and visitors look
+# around as one of the runners. See lib/auth.ts demoMode().
+#
+# A plain var rather than a secret, deliberately -- it is not a
+# credential, and which mode the site is in should be visible in git
+# rather than remembered. Setting it to anything but "1", or removing
+# it, restores the passcode and the full app.
+[vars]
+DEMO_MODE = "1"

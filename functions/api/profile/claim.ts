@@ -4,11 +4,14 @@
 // PIN yet can be claimed, so this cannot be used to take over someone
 // who already set one.
 
-import { type Env, requireGroup, mintProfileToken } from '../../../lib/auth';
+import { type Env, requireGroup, mintProfileToken, demoBlocked } from '../../../lib/auth';
 import { err, json } from '../../../lib/http';
 import { PIN_RULE, PIN_TOO_OBVIOUS, hashPin, pinIsTooObvious, pinLooksValid } from '../../../lib/pin';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   const blocked = await requireGroup(request, env);
   if (blocked) return blocked;
 

@@ -6,7 +6,7 @@
 // runner key, taken from the profile token. Nobody can see who saved
 // them, or how many people did.
 
-import { type Env, requireProfile } from '../../lib/auth';
+import { type Env, requireProfile, demoBlocked } from '../../lib/auth';
 import { err, json } from '../../lib/http';
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
@@ -26,6 +26,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   const who = await requireProfile(request, env);
   if (who instanceof Response) return who;
 
@@ -55,6 +58,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 };
 
 export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   const who = await requireProfile(request, env);
   if (who instanceof Response) return who;
 

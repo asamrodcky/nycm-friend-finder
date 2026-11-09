@@ -8,12 +8,15 @@
 // but "Ferry" -- demanding a complete form would make those people
 // either invent data or give up.
 
-import { type Env, requireGroup, mintProfileToken } from '../../../lib/auth';
+import { type Env, requireGroup, mintProfileToken, demoBlocked } from '../../../lib/auth';
 import { err, json } from '../../../lib/http';
 import { PIN_RULE, PIN_TOO_OBVIOUS, hashPin, pinIsTooObvious, pinLooksValid } from '../../../lib/pin';
 import { parseRunner } from '../../../lib/validate';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const demo = demoBlocked(env);
+  if (demo) return demo;
+
   const blocked = await requireGroup(request, env);
   if (blocked) return blocked;
 

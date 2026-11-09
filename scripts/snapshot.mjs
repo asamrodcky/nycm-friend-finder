@@ -44,6 +44,9 @@ const DB = 'nycm-friendfinder';
 const KEEP = [
   'dim_color', 'dim_wave', 'dim_corral', 'dim_transport',
   'dim_runner', 'fct_runner_start', 'fct_runner_saved',
+  // 0008. Carries no identity of its own -- a mile marker against a
+  // start row -- and it is half of what makes a spectator a spectator.
+  'fct_spectator_mile',
 ];
 
 // Dropped, each for a stated reason. A table in neither list aborts the
@@ -64,12 +67,16 @@ const DROP = {
 // about, it stops rather than quietly publishing it.
 const EXPECTED = {
   dim_runner: ['runner_key', 'display_name', 'first_name', 'last_name',
-               'pin_hash', 'pin_salt', 'claimed_at_utc'],
+               'pin_hash', 'pin_salt', 'claimed_at_utc',
+               'instagram'],                      // 0007
   fct_runner_start: ['runner_start_key', 'bib_number', 'runner_key', 'color_key',
                      'wave_key', 'corral_key', 'transport_key', 'depart_time_local',
                      'meetup_note', 'is_current', 'valid_from_utc', 'valid_to_utc',
-                     'created_at_utc'],
+                     'created_at_utc',
+                     'participant_role', 'goal_time_seconds',   // 0008
+                     'has_sign', 'has_support'],
   fct_runner_saved: ['saved_key', 'runner_key', 'saved_runner_key', 'created_at_utc'],
+  fct_spectator_mile: ['runner_start_key', 'mile_marker'],
 };
 
 // Always. A PIN here is an identity mechanism, but people reuse PINs,
@@ -86,6 +93,11 @@ const ANONYMISE = [
   ['names', `UPDATE dim_runner
                 SET display_name = 'Runner ' || printf('%03d', runner_key),
                     first_name = NULL, last_name = NULL`],
+  // THE ONE THIS SCRIPT USED TO MISS. A handle skips the inference step
+  // entirely: a name plus a bib has to be looked up on NYRR, where a
+  // handle just is the person. 39 of them were live. Before this line,
+  // --anonymise wrote a file labelled "synthetic" with every one intact.
+  ['instagram handles', 'UPDATE dim_runner SET instagram = NULL'],
   // Unique per runner, so the live-bib unique index still holds. Every
   // superseded row for a runner keeps the same synthetic bib, which is
   // what you want: the history stays followable.
@@ -171,6 +183,8 @@ try {
     names: db.prepare('SELECT display_name FROM dim_runner').all().map(r => r.display_name),
     bibs: db.prepare('SELECT DISTINCT bib_number FROM fct_runner_start WHERE bib_number IS NOT NULL')
       .all().map(r => r.bib_number),
+    handles: db.prepare("SELECT instagram FROM dim_runner WHERE instagram IS NOT NULL AND instagram <> ''")
+      .all().map(r => r.instagram),
     runners: db.prepare('SELECT COUNT(*) n FROM dim_runner').get().n,
     pins: db.prepare('SELECT COUNT(*) n FROM dim_runner WHERE pin_hash IS NOT NULL').get().n,
   };
@@ -257,8 +271,36 @@ try {
   }
   if (/pin_hash\s*,?\s*['"][A-Za-z0-9_-]{10,}/.test(sql)) die('a PIN hash value survived into the output');
   if (anonymise) {
-    const leaked = [...before.names, ...before.bibs].filter(v => v && sql.includes(v));
-    if (leaked.length) die(`${leaked.length} original name(s)/bib(s) survived --anonymise`);
+    // PROVE THE SCRUB RAN, POSITIVELY. The old check was a substring
+    // scan of the output for every original value, which cannot work:
+    // one person registered a ONE-CHARACTER display name, and a
+    // one-character string occurs in any SQL text -- it matched the "G"
+    // inside "INTEGER" and failed a run whose data was in fact perfectly
+    // anonymised. A single-letter name would equally collide with a
+    // corral letter. Short values are unscannable this way.
+    //
+    // So assert the end state directly instead: every row must now hold
+    // a synthetic value. This is exact, has no false positives, and says
+    // what we actually mean -- that nothing original survived.
+    const residue = [
+      ['names', "SELECT COUNT(*) n FROM dim_runner WHERE display_name NOT LIKE 'Runner %'"],
+      ['instagram handles', 'SELECT COUNT(*) n FROM dim_runner WHERE instagram IS NOT NULL'],
+      ['first/last names', 'SELECT COUNT(*) n FROM dim_runner WHERE first_name IS NOT NULL OR last_name IS NOT NULL'],
+      ['bib numbers', "SELECT COUNT(*) n FROM fct_runner_start WHERE bib_number IS NOT NULL AND bib_number NOT LIKE '9____'"],
+      ['meetup notes', 'SELECT COUNT(*) n FROM fct_runner_start WHERE meetup_note IS NOT NULL'],
+    ];
+    for (const [what, q] of residue) {
+      const n = db.prepare(q).get().n;
+      if (n) die(`${n} original ${what} survived --anonymise`);
+    }
+
+    // Belt and braces over the text that actually gets written, as SQL
+    // string literals rather than bare substrings, and only for values
+    // long enough for a match to mean something.
+    const asLiteral = v => `'${String(v).replace(/'/g, "''")}'`;
+    const leaked = [...before.names, ...before.bibs, ...before.handles]
+      .filter(v => v && String(v).length >= 3 && sql.includes(asLiteral(v)));
+    if (leaked.length) die(`${leaked.length} original value(s) written as literals despite --anonymise`);
   }
 
   writeFileSync(out, sql);

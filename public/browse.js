@@ -24,7 +24,7 @@
 
 import { api, store, KEY, esc, icon, clock, startFacts, transportIcon, watchForUpdates,
          projectSplits, elapsedLabel, goalLabel } from './app.js';
-import { ensureAccess } from './gate.js';
+import { ensureAccess, isDemo } from './gate.js';
 
 const app = document.querySelector('#app');
 let roster = [], saved = [], gaps = [], me = null;
@@ -245,7 +245,7 @@ function card(r, { mine = false, tag = null } = {}) {
         </div>
         ${tag ? `<span class="tag match">${esc(tag)}</span>` : ''}
         ${r.is_complete || tag ? '' : `<span class="badge">${spectator ? 'needs a mile' : needs}</span>`}
-        ${mine ? '' : `<button class="star${isSaved ? ' on' : ''}" data-save="${r.runner_key}"
+        ${mine || isDemo ? '' : `<button class="star${isSaved ? ' on' : ''}" data-save="${r.runner_key}"
              aria-label="${isSaved ? `Remove ${esc(r.display_name)} from my people` : `Save ${esc(r.display_name)}`}"
              aria-pressed="${isSaved}">${icon('star', { filled: isSaved })}</button>`}
       </div>
@@ -575,11 +575,20 @@ function render() {
     <!-- Invite first, because it is the thing Sam needs to hand to people
          and it was buried under 58 cards. Deliberately a compact bar and
          not a full section: the eye should still land on your own card. -->
+    ${isDemo ? `
+    <div class="invite-bar demo-note">
+      <h2 class="sr-only">About this demo</h2>
+      <p><strong>This is a finished race, replayed.</strong> 73 real people used this on
+         1 November 2026. Names, bib numbers and Instagram handles were removed afterwards
+         &mdash; everything else is exactly as they left it: who followed whom, when each
+         person signed up, and the 29 times somebody came back and changed their mind.</p>
+      <p class="hint">Read-only. You are looking around as one of the runners.</p>
+    </div>` : `
     <div class="invite-bar">
       <h2 class="sr-only">Invite someone</h2>
       <button class="ghost" id="invite">Copy invite link</button>
       <p class="hint">Send this one &mdash; the link in your address bar loses the password.</p>
-    </div>
+    </div>`}
 
     <section class="sec">
       <h2 class="sec-head">You</h2>
@@ -593,7 +602,9 @@ function render() {
       <h2 class="sec-head">Your people ${count(saved.length)}</h2>
       ${saved.length
         ? saved.map(s => savedCard(s, mine)).join('')
-        : `<p class="empty">Nobody yet. Tap a star to add someone you want to find on race morning.</p>`}
+        : `<p class="empty">${isDemo
+            ? 'This runner followed nobody.'
+            : 'Nobody yet. Tap a star to add someone you want to find on race morning.'}</p>`}
     </section>
 
     ${mine ? `<section class="sec">
@@ -622,7 +633,7 @@ function render() {
       <p class="empty">${gaps.length === 1 ? 'This person hasn\'t' : 'These people haven\'t'} filled everything in — ${esc(gaps.map(g => g.display_name).join(', '))}.</p>
     </section>` : ''}
 
-    <button class="ghost" id="signout">Sign out of this device</button>`;
+    ${isDemo ? '' : '<button class="ghost" id="signout">Sign out of this device</button>'}`;
 
   // Fills #everyone, then applyFilter() sets the heading, the no-match
   // line and the live region. That live region lives in the page shell,
@@ -630,9 +641,10 @@ function render() {
   // region that gets replaced does not reliably announce.
   paintEveryone();
 
+  // Nothing to edit in a demo, and the form would refuse on submit.
   const link = document.querySelector('#edit-link');
-  link.hidden = false;
-  link.textContent = mine ? 'Edit my info' : 'Add me back';
+  link.hidden = isDemo;
+  if (!isDemo) link.textContent = mine ? 'Edit my info' : 'Add me back';
 }
 
 // ---------- events ----------

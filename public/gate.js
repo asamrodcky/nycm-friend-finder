@@ -80,6 +80,13 @@ async function redeemLinkKey() {
   history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
+/**
+ * True once the server says this deployment is a read-only demo. Read by
+ * browse.js, so the roster can drop the controls that would only ever
+ * 403 -- there is no point offering a star that cannot be saved.
+ */
+export let isDemo = false;
+
 /** Resolves to the runner_key once we have a profile. */
 export function ensureAccess(root) {
   return new Promise(resolve => {
@@ -89,9 +96,28 @@ export function ensureAccess(root) {
       if (!store.get(KEY.group)) return askPassword(root, next);
       return askRole(root, next);
     };
-    // Redeemed before anything renders, so somebody arriving on a shared
-    // link never sees a password screen flash up and disappear.
-    redeemLinkKey().then(next);
+
+    // DEMO FIRST, AHEAD OF ALL OF THAT. The race is over and 0010 took
+    // the identities out of the database, so a password now protects
+    // nothing -- while still being the wall §29 measured people bouncing
+    // off. A demo visitor arrives already signed in as the viewer the
+    // server picked: no passcode, no PIN, no token.
+    //
+    // Failing open to the normal flow is deliberate. If this request
+    // cannot be answered, the safe assumption is that the site is still
+    // live and still needs its password.
+    api('/api/mode')
+      .then(({ demo, viewer_key }) => {
+        if (demo && viewer_key) {
+          isDemo = true;
+          store.set(KEY.me, String(viewer_key));
+          return resolve(Number(viewer_key));
+        }
+        // Redeemed before anything renders, so somebody arriving on a
+        // shared link never sees a password screen flash up and vanish.
+        return redeemLinkKey().then(next);
+      })
+      .catch(() => redeemLinkKey().then(next));
   });
 }
 
