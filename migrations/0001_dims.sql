@@ -96,9 +96,9 @@ INSERT INTO dim_transport (transport_key, transport_label, method, origin_name, 
 -- conformed across future years (and is where an SCD2 would live).
 --
 -- display_name is the STORED primary field, not a generated first||last.
--- Most people in a run club are known by one name -- "Runner T", "Runner V",
--- "Runner O" -- and there is no last name to split out. first/last stay
--- optional for anyone who wants to give both.
+-- Most people in a run club are known by one name -- a first name, a
+-- nickname, a first name plus an initial -- and there is no last name to
+-- split out. first/last stay optional for anyone who wants to give both.
 -- ---------------------------------------------------------------------------
 CREATE TABLE dim_runner (
   runner_key   INTEGER PRIMARY KEY AUTOINCREMENT,

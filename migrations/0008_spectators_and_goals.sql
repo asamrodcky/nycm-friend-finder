@@ -1,7 +1,7 @@
 -- Spectators, goal times and projected mile splits.
 --
--- Prompted by the group chat: "what if I am here to spectate" (Kat C).
--- The answer until now was Runner D's -- "just fill it out without a bib" --
+-- Prompted by the group chat: "what if I am here to spectate".
+-- The advice going round was "just fill it out without a bib" --
 -- which puts a spectator on the roster as a card with no colour, no
 -- wave and no corral. §29 found three of exactly those and they match
 -- nobody and are matched by nobody. A spectator is not a runner with
@@ -24,7 +24,7 @@ ALTER TABLE fct_runner_start ADD COLUMN participant_role TEXT NOT NULL DEFAULT '
 ALTER TABLE fct_runner_start ADD COLUMN goal_time_seconds INTEGER
   CHECK (goal_time_seconds IS NULL OR (goal_time_seconds BETWEEN 1500 AND 46800));
 
--- Runner H, in the same thread: "if you have a sign, cowbell, some
+-- Another member, in the same thread: "if you have a sign, cowbell, some
 -- other cheer stuff" and "if you are passing out runner support (gels,
 -- nerd gummy clusters, hydration)". Two flags rather than free text,
 -- because the whole point is to be able to FIND the person handing out
@@ -32,9 +32,9 @@ ALTER TABLE fct_runner_start ADD COLUMN goal_time_seconds INTEGER
 ALTER TABLE fct_runner_start ADD COLUMN has_sign    INTEGER NOT NULL DEFAULT 0 CHECK (has_sign    IN (0, 1));
 ALTER TABLE fct_runner_start ADD COLUMN has_support INTEGER NOT NULL DEFAULT 0 CHECK (has_support IN (0, 1));
 
--- A TABLE, not a column, because Runner H asked for the thing that makes
--- it a table: "option to enter multiple miles if moving around the
--- course". One row per mile somebody plans to be at.
+-- A TABLE, not a column, because somebody asked for the thing that
+-- makes it a table: "option to enter multiple miles if moving around
+-- the course". One row per mile somebody plans to be at.
 --
 -- Keyed on runner_start_key, so it is versioned with the rest of the
 -- assignment -- edit your miles and the old set stays attached to the

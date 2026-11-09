@@ -28,14 +28,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!pin) return err('enter your PIN');
 
   // Keyed on the target, lowercased so it matches the NOCASE lookup
-  // below -- otherwise "Runner O" and "runner o" would get a fresh budget
+  // below -- otherwise "Alex" and "alex" would get a fresh budget
   // each. Checked before the row is even fetched, so a locked-out
   // caller cannot use timing to learn whether a bib exists.
   const target = who.toLowerCase();
   if (await isLockedOut(env, SIGNIN, target)) return err(LOCKED_OUT, 429);
 
   // Bib lives on the fact table, name on the dimension, so look in both.
-  // NOCASE so "runner o" finds "Runner O".
+  // NOCASE so "alex" finds "Alex".
   const row = await env.DB.prepare(`
     SELECT r.runner_key, r.pin_hash, r.pin_salt
       FROM dim_runner r
