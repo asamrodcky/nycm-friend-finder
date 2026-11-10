@@ -70,8 +70,28 @@ for (const name of ordered) {
   if (hits) { out = out.replace(re, key); counts.push([name.length, hits]); }
 }
 
+// LEADING-ZERO VARIANTS ARE NOT OPTIONAL, and missing them published a
+// real bib. A word-bounded match on a bare number does not match inside
+// its own zero-padded form -- `\b1234\b` finds nothing in "01234",
+// because there is no word boundary between the 0 and the 1 -- so the
+// replacement never fires, AND a residue check written with the same
+// pattern never notices. The bug and the test for the bug share one
+// blind spot.
+//
+// It is the exact thing lib/validate.ts canonicalises against: the
+// padded and bare forms are one bib to a person and two to a raw string
+// comparison. Longest first, so the padded form is replaced before the
+// bare form can match its tail.
+//
+// The example above is invented, deliberately. The first version of
+// this comment used the real number -- putting the bib back into the
+// repository inside the note explaining how it escaped, and making this
+// the third time in this project that a tool carried the very data it
+// exists to remove.
+const bibForms = BIBS.flatMap(b => [`00${b}`, `0${b}`, b]);
+
 let bibHits = 0;
-for (const bib of BIBS) {
+for (const bib of bibForms) {
   const re = new RegExp(`\\b${bib}\\b`, 'g');
   const hits = (out.match(re) || []).length;
   bibHits += hits;
@@ -89,7 +109,7 @@ const residue = [];
 for (const name of PEOPLE) {
   if (new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(out)) residue.push('name');
 }
-for (const bib of BIBS) if (new RegExp(`\\b${bib}\\b`).test(out)) residue.push('bib');
+for (const bib of bibForms) if (new RegExp(`\\b${bib}\\b`).test(out)) residue.push('bib');
 if (residue.length) {
   console.error(`\n  ✗ ${residue.length} item(s) survived the scrub\n`);
   process.exit(1);
