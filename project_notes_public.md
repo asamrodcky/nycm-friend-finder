@@ -2839,8 +2839,43 @@ off a 9:10 start and got exactly mile 18 → 2:34:35 → 11:44 AM and mile 23 �
 12:27 PM. Signin by name works, which matters because a spectator has no bib. Runner side
 unregressed: every-third-mile table and a "same wave" ladder.
 
-**Not deployed.** No schema change in this one, so it is a plain `npm run deploy` from
-`main` after merging — but it has not been merged.
+**NOT DEPLOYED, NOT MERGED, AND THE BRANCH IS NOW DELETED — 2026-11-09.**
+
+Sam's call, and a reasonable one: the feature was always flagged unfinished, the case
+study says so, and carrying an 8-commits-behind branch through a repository migration
+costs more attention than it is worth. The design below is the record; the code is gone.
+Rebuilding from this section is the intended path, not recovering a branch.
+
+The commit it lived on was `714328c`, which **no longer exists** — the history rewrite of
+2026-11-09 renumbered every commit, and the branch tip became `a93df66` before deletion.
+Both hashes are dead. Do not go looking for them.
+
+**What to rebuild, at function level**, since the prose above describes behaviour and this
+describes shape:
+
+- `milesOf(r)` — parses `spectator_miles` (a comma-joined string from the view) into
+  numbers. Every consumer wants "this person's miles" attached to the person, which is why
+  the view groups it rather than fanning rows out per mile.
+- `sharedMiles(m, t)` / `nextMileOver(m, t)` — set intersection, and `Math.abs(a-b) === 1`.
+- `SPECTATOR_LADDER` — `[['same mile', …], ['next mile over', …]]`, both gated on the
+  target also being a spectator. Adjacent is the weaker rung on purpose: the same mile
+  means you are already standing together, a mile apart means deciding to go and find
+  each other.
+- `ladderFor(mine)` — returns `SPECTATOR_LADDER` or the runner `LADDER`, and is called in
+  BOTH `overlap()` and `peopleNearMe()`. Missing either one leaves half the UI on the
+  wrong ladder.
+- `splitsTable(s, viewer)` — takes the viewer, so a spectator gets their own miles and
+  everyone else gets `DEFAULT_SPLIT_MILES` (every third). Wrapped in a disclosure with
+  `aria-expanded` / `aria-controls`.
+- `savedTag(mine, live, hit)` — the cross-role labels. This is the one worth keeping:
+  without it, two people who had just deliberately followed each other were told their
+  relationship did not exist.
+- `whyNobodyNear(mine)` needs a spectator branch too, or it tells a spectator to add a
+  start colour and wave — fields the form no longer shows them.
+
+**What was never built, and still is not:** a runner's "people near you" cannot surface a
+spectator. Nearness at the start is a runner idea and a spectator is not there; reaching a
+cheering friend is a follow, not a match. That was a deliberate call, not an omission.
 
 **Still blocked:** the filter restyle. Four screenshots now, all in the sandboxed
 `NSIRD_screencaptureui_*` staging folder, all `EPERM`.
